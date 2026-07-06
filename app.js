@@ -1,4 +1,37 @@
 window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
+
+/* V16 Discount Error Fixed: guaranteed global discount helpers */
+function discountEnsureData(){
+  if(!window.state) return;
+  if(!state.discounts || !Array.isArray(state.discounts)) state.discounts=[];
+  if(!state.discountApplications || !Array.isArray(state.discountApplications)) state.discountApplications=[];
+  if(!state.discounts.some(d=>d && d.title==="영화무료상영권")){
+    state.discounts.push({
+      id:"movie_ticket",
+      category:"문화",
+      title:"영화무료상영권",
+      rate:"무료",
+      method:"선착순 5명 신청 접수 후 관리자 확인",
+      link:"",
+      applyEnabled:true,
+      limitCount:5
+    });
+  }
+}
+function discountApplyCount(id){
+  discountEnsureData();
+  return ((state && state.discountApplications) || []).filter(a => a && a.discountId===id && a.status!=="취소" && a.status!=="반려").length;
+}
+function myDiscountApplied(id){
+  discountEnsureData();
+  const u = (typeof user==="function") ? user() : null;
+  if(!u) return false;
+  return ((state && state.discountApplications) || []).some(a => a && a.discountId===id && a.userId===u.id && a.status!=="취소" && a.status!=="반려");
+}
+function discountSafeStatusButtons(id){
+  return `<button onclick="setStatus('discountApplications','${id}','승인')">승인</button><button class="danger" onclick="setStatus('discountApplications','${id}','반려')">반려</button><button class="danger" onclick="deleteRowsByIds('discountApplications',['${id}'],'할인 신청 내역')">삭제</button>`;
+}
+
 const app=document.getElementById("app");
 const V16_CLOUD_READY=true;
 const CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
@@ -335,7 +368,9 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2
 function money(n){return Number(n||0).toLocaleString()+"원";}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.innerText=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 function user(){if(!session)return null;if(session.role==="admin")return state.admins.find(a=>a.id===session.id);return state.users.find(u=>u.id===session.id);}
-function setPage(p){if(!ensureEnabledPage(p)){toast("현재 비활성화된 메뉴입니다.");return;}page=p;render();scrollTo(0,0);}
+function setPage(p){
+  safeSetPage(p);
+}
 function logout(){session=null;localStorage.removeItem("with_session_v5");render();}
 
 function onlyDigits(v){return String(v||"").replace(/\D/g,"");}
@@ -442,29 +477,73 @@ function goMobile(p){
 function mobileBottomNav(){
   if(!session) return "";
   const isAdmin=user() && user().role==="admin";
-  const moreItems=[
-    {key:"discount",name:pageLabel("discount"),show:ensureEnabledPage("discount")},
-    {key:"vacation",name:pageLabel("vacation"),show:ensureEnabledPage("vacation")},
-    {key:"notice",name:pageLabel("notice"),show:ensureEnabledPage("notice")},
-    {key:isAdmin?"admin":"mypage",name:isAdmin?"관리자":"내 정보",show:true}
-  ].filter(x=>x.show);
-  return `<div id="mobileMoreSheet" class="mobile-more-sheet">
-    <div class="mobile-more-head"><b>더보기</b><button onclick="closeMobileMore()">닫기</button></div>
-    ${moreItems.map(i=>`<button onclick="goMobile('${i.key}')">${i.name}</button>`).join("")}
-    <button class="danger" onclick="logout()">로그아웃</button>
-  </div>
-  <nav class="mobile-bottom-nav">
-    <button class="${page==='home'?'active':''}" onclick="goMobile('home')"><span>⌂</span><small>홈</small></button>
-    <button class="${page==='stay'?'active':''}" onclick="goMobile('stay')"><span>🏡</span><small>숙소</small></button>
-    <button class="${page==='family'?'active':''}" onclick="goMobile('family')"><span>🎁</span><small>경조사</small></button>
-    <button class="${page==='event'?'active':''}" onclick="goMobile('event')"><span>🎉</span><small>행사</small></button>
-    <button onclick="toggleMobileMore()"><span>☰</span><small>더보기</small></button>
-  </nav>`;
+  const items=[
+    {key:"home",name:"홈",icon:"⌂"},
+    {key:"stay",name:"숙소",icon:"🏡"},
+    {key:"family",name:"경조",icon:"🎁"},
+    {key:"event",name:"행사",icon:"🎉"},
+    {key:isAdmin?"admin":"mypage",name:isAdmin?"관리":"내정보",icon:"☰"}
+  ];
+  return `<nav class="mobile-bottom-nav">${items.map(i=>`<button class="${page===i.key?'active':''}" data-page="${i.key}"><span>${i.icon}</span><small>${i.name}</small></button>`).join("")}</nav>`;
 }
+function safeSetPage(p){
+  try{
+    page=p;
+    render();
+    setTimeout(()=>window.scrollTo(0,0),0);
+  }catch(e){
+    console.error("페이지 이동 오류",p,e);
+    alert("화면 이동 중 오류가 발생했습니다. 오류 화면 대신 홈으로 이동합니다.\n" + (e.message||e));
+    page="home";
+    try{render();}catch(err){location.reload();}
+  }
+}
+function safeSetAdminTab(t){
+  try{
+    page="admin";
+    adminTab=t;
+    render();
+    setTimeout(()=>window.scrollTo(0,0),0);
+  }catch(e){
+    console.error("관리자 탭 오류",t,e);
+    alert("관리자 탭 이동 중 오류가 발생했습니다.\n" + (e.message||e));
+    try{
+      page="admin";
+      adminTab="adminDashboard";
+      render();
+    }catch(err){location.reload();}
+  }
+}
+document.addEventListener("click",function(e){
+  const pageBtn=e.target.closest("[data-page]");
+  if(pageBtn){
+    e.preventDefault();
+    safeSetPage(pageBtn.dataset.page);
+    return;
+  }
+  const adminBtn=e.target.closest("[data-admin-tab]");
+  if(adminBtn){
+    e.preventDefault();
+    safeSetAdminTab(adminBtn.dataset.adminTab);
+    return;
+  }
+});
 
-function layout(content){const u=user();return `<div class="top"><div class="topin"><div class="brand"><div class="logo">${state.settings.logoUrl?`<img src="${state.settings.logoUrl}">`:`W`}</div><div><b>WITH Welfare Mall</b><small>${u.name} · ${u.role==="admin"?"관리자":"임직원"}</small></div></div><div class="nav">${navItems().map(item=>`<button class="${page===item.key?'active':''}" onclick="setPage('${item.key}')">${item.name}</button>`).join("")}${u.role==="admin"?`<button class="${page==='admin'?'active':''}" onclick="setPage('admin')">관리자</button>`:`<button class="${page==='mypage'?'active':''}" onclick="setPage('mypage')">내 정보</button>`}<button class="gray" onclick="logout()">로그아웃</button></div></div></div><div class="wrap">${content}</div>${mobileBottomNav()}<div class="footer">WITH Welfare Mall · 제주 사계펜션 복지몰</div>`;}
-
-
+function layout(content){
+  const u=user();
+  const nav=[
+    ["home","홈"],
+    ["stay",pageLabel("stay")],
+    ["family",pageLabel("family")],
+    ["event",pageLabel("event")],
+    ["discount",pageLabel("discount")],
+    ["notice",pageLabel("notice")]
+  ].filter(n=>ensureEnabledPage?ensureEnabledPage(n[0]):true);
+  return `<div class="top"><div class="topin">
+    <div class="brand"><div class="logo">${state.settings.logo?`<img src="${state.settings.logo}">`:"W"}</div><div><b>WITH Welfare Mall</b><small>${u?u.name:""} · ${u&&u.role==="admin"?"관리자":"직원"}</small></div></div>
+    <div class="nav">${nav.map(n=>`<button class="${page===n[0]?'active':''}" data-page="${n[0]}">${n[1]}</button>`).join("")}${u&&u.role==="admin"?`<button class="${page==='admin'?'active':''}" data-page="admin">관리자</button>`:`<button class="${page==='mypage'?'active':''}" data-page="mypage">내정보</button>`}<button onclick="logout()">로그아웃</button></div>
+  </div></div><div class="wrap">${content}</div>${mobileBottomNav?mobileBottomNav():""}<div class="footer">WITH Welfare Mall</div>`;
+}
 function navItems(){
   const base=[{key:"home",name:"홈",enabled:true}];
   const keys=["stay","family","event","discount","notice"];
@@ -513,20 +592,40 @@ function condolenceTable(rows,admin){
   </tr>`).join("")}</tbody></table>`;
 }
 
-function adminDataCleanupPanel(){
-  const items=[
-    {key:"reservations",label:"숙소 예약 내역",count:(state.reservations||[]).length},
-    {key:"condolences",label:"경조사 접수 내역",count:(state.condolences||[]).length},
-    {key:"eventApplications",label:"행사 신청 내역",count:(state.eventApplications||state.eventApps||[]).length, alt: state.eventApplications?"eventApplications":"eventApps"},
-    {key:"discountApplications",label:"할인 신청 내역",count:(state.discountApplications||[]).length},
-    {key:"auditLogs",label:"감사 로그",count:(state.auditLogs||[]).length}
+function admin(){
+  const tabs=[
+    ["adminDashboard","대시보드"],
+    ["homeAdmin","홈/메뉴/로고"],
+    ["stayAdmin","숙소 관리"],
+    ["condolenceAdmin","경조사 관리"],
+    ["eventAdminGroup","행사 관리"],
+    ["discountAdminGroup","할인 관리"],
+    ["noticeAdminGroup","공지 관리"],
+    ["memberAdmin","회원/관리자"],
+    ["auditLog","감사 로그"],
+    ["aiAssistant","AI 비서"],
+    ["stats","통계"]
   ];
-  return `<div class="panel"><h3>데이터 정리</h3><p class="muted">신청 현황 데이터가 누적될 때 전체삭제할 수 있습니다. 삭제 전 확인창이 표시됩니다.</p>
-  <table class="table"><thead><tr><th>항목</th><th>건수</th><th>관리</th></tr></thead><tbody>
-    ${items.map(i=>`<tr><td>${i.label}</td><td>${i.count}건</td><td><button class="danger" onclick="clearRows('${i.alt||i.key}','${i.label}')">전체삭제</button></td></tr>`).join("")}
-  </tbody></table></div>`;
+  let body="";
+  try{
+    if(adminTab==="adminDashboard") body=adminDashboard();
+    else if(adminTab==="homeAdmin") body=homeAdmin();
+    else if(adminTab==="stayAdmin") body=stayAdminGroup();
+    else if(adminTab==="condolenceAdmin") body=condolenceAdminGroup();
+    else if(adminTab==="eventAdminGroup") body=eventAdminGroup();
+    else if(adminTab==="discountAdminGroup") body=discountAdminGroup();
+    else if(adminTab==="noticeAdminGroup") body=noticeAdminGroup();
+    else if(adminTab==="memberAdmin") body=memberAdmin();
+    else if(adminTab==="auditLog") body=auditLog();
+    else if(adminTab==="aiAssistant") body=aiAssistant();
+    else if(adminTab==="stats") body=stats();
+    else { adminTab="adminDashboard"; body=adminDashboard(); }
+  }catch(e){
+    console.error("관리자 화면 오류",adminTab,e);
+    body=`<div class="panel"><h2>관리자 화면 오류</h2><p class="muted">이 탭에서 오류가 발생했습니다. 다른 탭은 계속 사용할 수 있습니다.</p><pre style="white-space:pre-wrap;color:#b42318">${e.message||e}</pre><button data-admin-tab="adminDashboard">대시보드로 이동</button></div>`;
+  }
+  return layout(`<section class="admin-shell"><aside class="admin-side">${tabs.map(t=>`<button class="${adminTab===t[0]?'active':''}" data-admin-tab="${t[0]}">${t[1]}</button>`).join("")}</aside><main>${body}</main></section>`);
 }
-
 function adminSelectAll(className, checked){
   document.querySelectorAll("." + className).forEach(x=>x.checked=checked);
 }
@@ -902,7 +1001,7 @@ function submitCondolence(e){
     saveRow("");
   }
 }
-function eventPage(){return layout(`<section class="section"><h2>사내 행사 신청</h2><div class="grid2">${state.events.filter(e=>e.isOpen!==false).map(ev=>{const cnt=state.eventApplications.filter(a=>a.eventId===ev.id&&a.status!=="취소").length;const applied=state.eventApplications.find(a=>a.eventId===ev.id&&a.userId===user().id&&a.status!=="취소");return`<div class="card"><span class="badge">${ev.date}</span><h3>${ev.title}</h3><p class="muted">${ev.memo}</p><p>신청 ${cnt}/${ev.limit}명</p>${applied?`<button class="gray" disabled>신청 완료</button>`:`<button onclick="applyEvent('${ev.id}')">참석 신청</button>`}</div>`}).join("")}</div></section>`);}
+function event(){return layout(`<section class="section"><h2>사내 행사 신청</h2><div class="grid2">${state.events.filter(e=>e.isOpen!==false).map(ev=>{const cnt=state.eventApplications.filter(a=>a.eventId===ev.id&&a.status!=="취소").length;const applied=state.eventApplications.find(a=>a.eventId===ev.id&&a.userId===user().id&&a.status!=="취소");return`<div class="card"><span class="badge">${ev.date}</span><h3>${ev.title}</h3><p class="muted">${ev.memo}</p><p>신청 ${cnt}/${ev.limit}명</p>${applied?`<button class="gray" disabled>신청 완료</button>`:`<button onclick="applyEvent('${ev.id}')">참석 신청</button>`}</div>`}).join("")}</div></section>`);}
 function applyEvent(id){const ev=state.events.find(e=>e.id===id);const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;if(cnt>=ev.limit)return toast("마감되었습니다.");state.eventApplications.push({id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString()});save();toast("행사 신청 완료");render();}
 
 function discount(){
@@ -926,9 +1025,10 @@ function discount(){
   </section>`);
 }
 function myDiscountApplied(id){
-  ensureDiscountData();
-  const u=user();
-  return !!u && state.discountApplications.some(a=>a.discountId===id && a.userId===u.id && a.status!=="취소" && a.status!=="반려");
+  discountEnsureData();
+  const u = (typeof user==="function") ? user() : null;
+  if(!u) return false;
+  return ((state && state.discountApplications) || []).some(a => a && a.discountId===id && a.userId===u.id && a.status!=="취소" && a.status!=="반려");
 }
 function applyDiscount(id){
   ensureDiscountData();
@@ -1294,18 +1394,19 @@ function eventAdminGroup(){
 
 
 function discountApplicationTable(rows,admin){
-  ensureDiscountData();
+  discountEnsureData();
+  rows = rows || [];
   if(!rows.length) return `<div class="panel empty">신청 내역이 없습니다.</div>`;
   return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>혜택명</th><th>신청자</th><th>부서</th><th>연락처</th><th>신청일</th><th>상태</th><th>관리</th></tr></thead><tbody>
     ${rows.map(a=>`<tr>
-      ${admin?`<td>${rowCheck('chkDiscountApply',a.id)}</td>`:""}
-      <td>${a.title}</td>
-      <td>${a.userName}</td>
+      ${admin?`<td>${typeof rowCheck==="function" ? rowCheck('chkDiscountApply',a.id) : `<input type="checkbox" class="chkDiscountApply" value="${a.id}">`}</td>`:""}
+      <td>${a.title||""}</td>
+      <td>${a.userName||""}</td>
       <td>${a.dept||""}</td>
       <td>${a.phone||""}</td>
       <td>${a.createdAt||""}</td>
-      <td><span class="status ${a.status}">${a.status}</span></td>
-      <td>${admin?`<button onclick="setStatus('discountApplications','${a.id}','승인')">승인</button><button class="danger" onclick="setStatus('discountApplications','${a.id}','반려')">반려</button><button class="danger" onclick="deleteRowsByIds('discountApplications',['${a.id}'],'할인 신청 내역')">삭제</button>`:"-"}</td>
+      <td><span class="status ${a.status||"접수완료"}">${a.status||"접수완료"}</span></td>
+      <td>${admin?discountSafeStatusButtons(a.id):"-"}</td>
     </tr>`).join("")}
   </tbody></table>`;
 }
@@ -1319,7 +1420,7 @@ function cancelDiscountApplication(id){
   render();
 }
 function discountAdmin(){
-  ensureDiscountData();
+  discountEnsureData();
   return `<div class="panel"><h3>할인 항목 추가</h3>
   <form class="form" onsubmit="addDiscount(event)">
     <label>카테고리<input name="category" required></label>
@@ -1499,7 +1600,7 @@ function discountAdmin(embedded=false){
 }
 function addDiscount(e){
   e.preventDefault();
-  ensureDiscountData();
+  discountEnsureData();
   const f=new FormData(e.target);
   state.discounts.push({
     id:uid(),
@@ -1514,7 +1615,7 @@ function addDiscount(e){
   save();toast("할인 항목이 추가되었습니다.");render();
 }
 function updateDiscount(id){
-  ensureDiscountData();
+  discountEnsureData();
   const d=state.discounts.find(x=>x.id===id);
   if(!d) return toast("할인 항목을 찾을 수 없습니다.");
   d.category=document.getElementById("dc_"+id).value;
@@ -1528,7 +1629,7 @@ function updateDiscount(id){
   save();toast("할인 항목이 수정되었습니다.");render();
 }
 function deleteDiscount(id){
-  ensureDiscountData();
+  discountEnsureData();
   const d=state.discounts.find(x=>x.id===id);
   if(!d) return toast("할인 항목을 찾을 수 없습니다.");
   const cnt=state.discountApplications.filter(a=>a.discountId===id).length;
@@ -1634,7 +1735,7 @@ function exportCSV(){const rows=[["구분","신청자","부서","내용","일자
 function resetData(){if(!confirm("데모 데이터를 초기화할까요?"))return;localStorage.removeItem("with_welfare_v5");localStorage.removeItem("with_session_v5");state=load();session=null;toast("초기화되었습니다.");render();}
 
 function discountAdminGroup(){
-  ensureDiscountData();
+  discountEnsureData();
   return `<div class="group-box">
     <div class="group-section">
       <div class="subtle-title"><h3>할인 항목 관리</h3><span class="muted">추가, 수정, 삭제</span></div>
@@ -1642,12 +1743,31 @@ function discountAdminGroup(){
     </div>
     <div class="group-section">
       <div class="subtle-title"><h3>할인 신청 현황</h3><span class="muted">승인, 반려, 삭제</span></div>
-      ${adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply')}
+      ${typeof adminBulkToolbar==="function" ? adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply') : ""}
       ${discountApplicationTable(state.discountApplications,true)}
     </div>
   </div>`;
 }
 function render(){
-  finalHotfixCleanState();if(!session)return loginView();if(!user()){logout();return;}if(!ensureEnabledPage(page)){page="home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount")app.innerHTML=discount();if(page==="vacation")page="home";if(page==="notice")app.innerHTML=notice();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
-render();
-initCloudSync();
+  discountEnsureData();
+  try{
+    finalHotfixCleanState && finalHotfixCleanState();
+    if(!session){ loginView(); return; }
+    const u=user();
+    if(!u){ logout(); return; }
+    let html="";
+    if(page==="home") html=home();
+    else if(page==="stay") html=stay();
+    else if(page==="family") html=family();
+    else if(page==="event") html=event();
+    else if(page==="discount") html=discount();
+    else if(page==="notice") html=notice();
+    else if(page==="mypage") html=mypage?mypage():home();
+    else if(page==="admin") html=admin();
+    else { page="home"; html=home(); }
+    app.innerHTML=html;
+  }catch(e){
+    console.error("렌더링 오류",e);
+    app.innerHTML=`<div class="wrap"><div class="panel"><h2>화면 오류</h2><p class="muted">오류가 발생했지만 앱은 계속 사용할 수 있습니다.</p><pre style="white-space:pre-wrap;color:#b42318">${e.message||e}</pre><button onclick="location.reload()">새로고침</button><button onclick="page='home';render()">홈으로</button></div></div>`;
+  }
+}

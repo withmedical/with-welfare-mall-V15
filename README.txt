@@ -1,6 +1,11 @@
-WITH Welfare Mall V16 Discount Force Fix
+WITH Welfare Mall V16 Discount Error Fixed
 
-할인관리 탭 강제 복구판입니다.
-- 할인관리 탭 진입 오류 수정
-- 할인 항목 추가/수정/삭제 독립 함수로 재작성
-- 할인 신청 승인/반려/삭제 안정화
+콘솔 오류 `discountApplyCount is not defined` 해결판입니다.
+
+수정:
+- discountApplyCount 전역 함수 보장
+- myDiscountApplied 전역 함수 보장
+- 할인 탭/할인관리 탭 독립 동작
+- 할인관리에서 항목 추가/수정/삭제
+- 할인 신청 현황 승인/반려/삭제
+- 영화무료상영권 기본 데이터 자동 보정
