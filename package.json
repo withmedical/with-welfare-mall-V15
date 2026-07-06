@@ -1,0 +1,9 @@
+{
+  "name": "with-welfare-mall-v15",
+  "version": "15.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build-config.js",
+    "start": "python3 -m http.server 8788"
+  }
+}
