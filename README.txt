@@ -24,3 +24,4 @@ PW: withm*1905
 5. Redeploy
 6. 관리자 로그인 테스트
 7. 이메일은 EMAIL_SETUP.md 참고
+.
