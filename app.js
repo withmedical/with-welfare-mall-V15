@@ -1,3 +1,4 @@
+window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
 const app=document.getElementById("app");
 const V16_CLOUD_READY=true;
 const CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
@@ -276,7 +277,29 @@ function v16CloudStatusPanel(){
   </div>`;
 }
 
+
+function ensureDiscountData(){
+  if(!state.discounts) state.discounts=[];
+  if(!Array.isArray(state.discounts)) state.discounts=[];
+  if(!state.discountApplications) state.discountApplications=[];
+  if(!Array.isArray(state.discountApplications)) state.discountApplications=[];
+  if(!state.discounts.some(d=>d.title==="영화무료상영권")){
+    state.discounts.push({id:"movie_ticket",category:"문화",title:"영화무료상영권",rate:"무료",method:"선착순 5명 신청 접수 후 관리자 확인",link:"",applyEnabled:true,limitCount:5});
+  }
+  state.discounts=state.discounts.map(d=>({
+    id:d.id||uid(),
+    category:d.category||"",
+    title:d.title||"",
+    rate:d.rate||"",
+    method:d.method||"",
+    link:d.link||"",
+    applyEnabled:!!d.applyEnabled,
+    limitCount:Number(d.limitCount||0)
+  }));
+}
+
 function finalHotfixCleanState(){
+  ensureDiscountData();
   // QR / 이용대기 잔여 데이터 완전 제거
   if(state.reservations){
     state.reservations.forEach(r=>{
@@ -882,39 +905,56 @@ function submitCondolence(e){
 function eventPage(){return layout(`<section class="section"><h2>사내 행사 신청</h2><div class="grid2">${state.events.filter(e=>e.isOpen!==false).map(ev=>{const cnt=state.eventApplications.filter(a=>a.eventId===ev.id&&a.status!=="취소").length;const applied=state.eventApplications.find(a=>a.eventId===ev.id&&a.userId===user().id&&a.status!=="취소");return`<div class="card"><span class="badge">${ev.date}</span><h3>${ev.title}</h3><p class="muted">${ev.memo}</p><p>신청 ${cnt}/${ev.limit}명</p>${applied?`<button class="gray" disabled>신청 완료</button>`:`<button onclick="applyEvent('${ev.id}')">참석 신청</button>`}</div>`}).join("")}</div></section>`);}
 function applyEvent(id){const ev=state.events.find(e=>e.id===id);const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;if(cnt>=ev.limit)return toast("마감되었습니다.");state.eventApplications.push({id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString()});save();toast("행사 신청 완료");render();}
 
-function discountApplyCount(id){
-  return (state.discountApplications||[]).filter(a=>a.discountId===id && a.status!=="취소").length;
+function discount(){
+  ensureDiscountData();
+  return layout(`<section class="section"><h2>${pageLabel("discount")}</h2>
+  <p class="muted">제휴 할인과 복지 혜택을 확인하고 신청할 수 있습니다.</p>
+  <div class="grid4">${state.discounts.map(d=>{
+    const count=discountApplyCount(d.id);
+    const closed=d.applyEnabled && d.limitCount && count>=Number(d.limitCount);
+    const applied=d.applyEnabled && myDiscountApplied(d.id);
+    return `<div class="card">
+      <span class="badge">${d.category||"기타"}</span>
+      <h3>${d.title}</h3>
+      <p>${d.rate||""}</p>
+      <p class="muted">${d.method||""}</p>
+      ${d.applyEnabled?`<p class="muted">신청 현황: ${count}${d.limitCount?` / ${d.limitCount}명`:"명"}</p>`:""}
+      <button class="${closed?'gray':''}" ${closed||applied?'disabled':''} onclick="applyDiscount('${d.id}')">${applied?"신청 완료":closed?"마감":"이용하기"}</button>
+    </div>`;
+  }).join("")}</div>
+  <section class="section"><h2>내 할인 신청 내역</h2>${discountApplicationTable(state.discountApplications.filter(a=>a.userId===user().id),false)}</section>
+  </section>`);
 }
 function myDiscountApplied(id){
-  return (state.discountApplications||[]).some(a=>a.discountId===id && a.userId===user().id && a.status!=="취소");
+  ensureDiscountData();
+  const u=user();
+  return !!u && state.discountApplications.some(a=>a.discountId===id && a.userId===u.id && a.status!=="취소" && a.status!=="반려");
 }
 function applyDiscount(id){
+  ensureDiscountData();
   const d=state.discounts.find(x=>x.id===id);
   if(!d) return toast("할인 항목을 찾을 수 없습니다.");
-  if(!d.applyEnabled) {
+  if(!d.applyEnabled){
     if(d.link){ window.open(d.link,"_blank"); return; }
     return toast("관리자가 등록한 이용 방법을 확인해 주세요.");
   }
   if(myDiscountApplied(id)) return toast("이미 신청한 항목입니다.");
   const count=discountApplyCount(id);
   if(d.limitCount && count>=Number(d.limitCount)) return toast("선착순 신청이 마감되었습니다.");
-  if(!state.discountApplications) state.discountApplications=[];
+  const u=user();
   state.discountApplications.push({
     id:uid(),
     discountId:id,
     title:d.title,
     category:d.category,
-    userId:user().id,
-    userName:user().name,
-    dept:user().dept||"",
-    phone:user().phone||"",
+    userId:u.id,
+    userName:u.name,
+    dept:u.dept||"",
+    phone:u.phone||"",
     status:"접수완료",
     createdAt:new Date().toLocaleString()
   });
-  if(typeof audit==="function") audit("할인 신청 접수",`${user().name} / ${d.title}`);
-  save();
-  toast("신청이 접수되었습니다.");
-  render();
+  save();toast("신청이 접수되었습니다.");render();
 }
 function discount(){
   return layout(`<section class="section"><h2>${pageLabel("discount")}</h2>
@@ -1254,12 +1294,18 @@ function eventAdminGroup(){
 
 
 function discountApplicationTable(rows,admin){
+  ensureDiscountData();
   if(!rows.length) return `<div class="panel empty">신청 내역이 없습니다.</div>`;
   return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>혜택명</th><th>신청자</th><th>부서</th><th>연락처</th><th>신청일</th><th>상태</th><th>관리</th></tr></thead><tbody>
     ${rows.map(a=>`<tr>
       ${admin?`<td>${rowCheck('chkDiscountApply',a.id)}</td>`:""}
-      <td>${a.title}</td><td>${a.userName}</td><td>${a.dept||""}</td><td>${a.phone||""}</td><td>${a.createdAt||""}</td><td><span class="status ${a.status}">${a.status}</span></td>
-      <td>${admin?`<button onclick="setStatus('discountApplications','${a.id}','승인')">승인</button><button class="danger" onclick="setStatus('discountApplications','${a.id}','반려')">반려</button><button class="danger" onclick="deleteOne('discountApplications','${a.id}')">삭제</button>`:"-"}</td>
+      <td>${a.title}</td>
+      <td>${a.userName}</td>
+      <td>${a.dept||""}</td>
+      <td>${a.phone||""}</td>
+      <td>${a.createdAt||""}</td>
+      <td><span class="status ${a.status}">${a.status}</span></td>
+      <td>${admin?`<button onclick="setStatus('discountApplications','${a.id}','승인')">승인</button><button class="danger" onclick="setStatus('discountApplications','${a.id}','반려')">반려</button><button class="danger" onclick="deleteRowsByIds('discountApplications',['${a.id}'],'할인 신청 내역')">삭제</button>`:"-"}</td>
     </tr>`).join("")}
   </tbody></table>`;
 }
@@ -1272,8 +1318,8 @@ function cancelDiscountApplication(id){
   toast("신청이 취소되었습니다.");
   render();
 }
-function discountAdmin(embedded=true){
-  if(!state.discounts) state.discounts=[];
+function discountAdmin(){
+  ensureDiscountData();
   return `<div class="panel"><h3>할인 항목 추가</h3>
   <form class="form" onsubmit="addDiscount(event)">
     <label>카테고리<input name="category" required></label>
@@ -1292,7 +1338,11 @@ function discountAdmin(embedded=true){
     <td><input id="dt_${d.id}" value="${d.title||""}"></td>
     <td><input id="dr_${d.id}" value="${d.rate||""}"></td>
     <td><input id="dm_${d.id}" value="${d.method||""}"></td>
-    <td><select id="da_${d.id}"><option value="false" ${!d.applyEnabled?'selected':''}>일반 안내</option><option value="true" ${d.applyEnabled?'selected':''}>신청 접수</option></select><input id="dlm_${d.id}" type="number" min="0" value="${d.limitCount||0}"></td>
+    <td>
+      <select id="da_${d.id}"><option value="false" ${!d.applyEnabled?'selected':''}>일반 안내</option><option value="true" ${d.applyEnabled?'selected':''}>신청 접수</option></select>
+      <input id="dlm_${d.id}" type="number" min="0" value="${d.limitCount||0}">
+      <span class="muted">현재 ${discountApplyCount(d.id)}명</span>
+    </td>
     <td><input id="dl_${d.id}" value="${d.link||""}"></td>
     <td class="actions"><button onclick="updateDiscount('${d.id}')">수정</button><button class="danger" onclick="deleteDiscount('${d.id}')">삭제</button></td>
   </tr>`).join("")||`<tr><td colspan="7">등록된 할인 항목이 없습니다.</td></tr>`}
@@ -1449,13 +1499,24 @@ function discountAdmin(embedded=false){
 }
 function addDiscount(e){
   e.preventDefault();
+  ensureDiscountData();
   const f=new FormData(e.target);
-  state.discounts.push({id:uid(),category:f.get("category"),title:f.get("title"),rate:f.get("rate"),method:f.get("method")||"",link:f.get("link")||"",applyEnabled:f.get("applyEnabled")==="true",limitCount:Number(f.get("limitCount")||0)});
+  state.discounts.push({
+    id:uid(),
+    category:String(f.get("category")||"").trim(),
+    title:String(f.get("title")||"").trim(),
+    rate:String(f.get("rate")||"").trim(),
+    method:String(f.get("method")||"").trim(),
+    link:String(f.get("link")||"").trim(),
+    applyEnabled:f.get("applyEnabled")==="true",
+    limitCount:Number(f.get("limitCount")||0)
+  });
   save();toast("할인 항목이 추가되었습니다.");render();
 }
 function updateDiscount(id){
+  ensureDiscountData();
   const d=state.discounts.find(x=>x.id===id);
-  if(!d)return toast("할인 항목을 찾을 수 없습니다.");
+  if(!d) return toast("할인 항목을 찾을 수 없습니다.");
   d.category=document.getElementById("dc_"+id).value;
   d.title=document.getElementById("dt_"+id).value;
   d.rate=document.getElementById("dr_"+id).value;
@@ -1463,13 +1524,15 @@ function updateDiscount(id){
   d.applyEnabled=document.getElementById("da_"+id).value==="true";
   d.limitCount=Number(document.getElementById("dlm_"+id).value||0);
   d.link=document.getElementById("dl_"+id).value;
-  (state.discountApplications||[]).forEach(a=>{if(a.discountId===id){a.title=d.title;a.category=d.category;}});
+  state.discountApplications.forEach(a=>{if(a.discountId===id){a.title=d.title;a.category=d.category;}});
   save();toast("할인 항목이 수정되었습니다.");render();
 }
 function deleteDiscount(id){
+  ensureDiscountData();
   const d=state.discounts.find(x=>x.id===id);
-  if(!d)return toast("할인 항목을 찾을 수 없습니다.");
-  if(!confirm("해당 할인 항목을 삭제할까요?"))return;
+  if(!d) return toast("할인 항목을 찾을 수 없습니다.");
+  const cnt=state.discountApplications.filter(a=>a.discountId===id).length;
+  if(!confirm(cnt?`신청 내역 ${cnt}건이 있는 항목입니다. 할인 항목만 삭제할까요?`:"해당 할인 항목을 삭제할까요?")) return;
   state.discounts=state.discounts.filter(x=>x.id!==id);
   save();toast("할인 항목이 삭제되었습니다.");render();
 }
@@ -1571,9 +1634,17 @@ function exportCSV(){const rows=[["구분","신청자","부서","내용","일자
 function resetData(){if(!confirm("데모 데이터를 초기화할까요?"))return;localStorage.removeItem("with_welfare_v5");localStorage.removeItem("with_session_v5");state=load();session=null;toast("초기화되었습니다.");render();}
 
 function discountAdminGroup(){
+  ensureDiscountData();
   return `<div class="group-box">
-    <div class="group-section"><div class="subtle-title"><h3>할인 항목 관리</h3><span class="muted">수정/삭제 가능</span></div>${discountAdmin()}</div>
-    <div class="group-section"><div class="subtle-title"><h3>할인 신청 현황</h3><span class="muted">승인/반려/삭제</span></div>${adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply')}${discountApplicationTable(state.discountApplications||[],true)}</div>
+    <div class="group-section">
+      <div class="subtle-title"><h3>할인 항목 관리</h3><span class="muted">추가, 수정, 삭제</span></div>
+      ${discountAdmin()}
+    </div>
+    <div class="group-section">
+      <div class="subtle-title"><h3>할인 신청 현황</h3><span class="muted">승인, 반려, 삭제</span></div>
+      ${adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply')}
+      ${discountApplicationTable(state.discountApplications,true)}
+    </div>
   </div>`;
 }
 function render(){

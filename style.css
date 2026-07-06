@@ -230,3 +230,6 @@ button{min-height:42px}
 
 /* Hotfix */
 .table td .status + br + .muted:empty{display:none}
+
+/* Discount force fix */
+.group-section .table input,.group-section .table select{max-width:180px}
