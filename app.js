@@ -1,4 +1,5 @@
 const app=document.getElementById("app");
+const V16_CLOUD_READY=true;
 const CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
 function normalizeSupabaseUrl(url){
   return String(url||"").trim().replace(/\/rest\/v1\/?$/,"").replace(/\/+$/,"");
@@ -9,6 +10,7 @@ const supabaseClient=(SUPABASE_URL&&SUPABASE_KEY&&window.supabase)?window.supaba
 let cloudReady=false;
 let cloudHydrating=false;
 let cloudSaveTimer=null;
+let cloudStatus="확인 중";
 const today=new Date().toISOString().slice(0,10);
 const MAX_FILE_SIZE=500*1024;
 const ALLOWED_FILES=["application/pdf","image/png","image/jpeg","image/jpg","image/gif","image/webp"];
@@ -114,31 +116,54 @@ function migrate(){
   state.events=(state.events||seed.events).map(e=>({id:e.id||uid(), title:e.title, date:e.date, limit:e.limit||0, memo:e.memo||"", isOpen:e.isOpen!==false}));
   state.discounts=(state.discounts||seed.discounts).map(d=>({id:d.id||uid(), category:d.category||"", title:d.title||"", rate:d.rate||"", method:d.method||"", link:d.link||""}));
   state.notices=(state.notices||seed.notices).map(n=>({id:n.id||uid(), title:n.title||"", important:!!n.important, body:n.body||"", views:n.views||0}));
-  dedupeState();
   if(changed) save();
 }
 
-function dedupeState(){
-  if(state.rooms){
-    const seen=new Set();
-    state.rooms=state.rooms.filter(r=>{
-      const key=(r.id||"")+"|"+(r.name||"");
-      if(seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    if(!state.rooms.find(r=>r.name==="스텔라동")) state.rooms.push({id:"stella",name:"스텔라동",basePeople:5,maxPeople:8,address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션",photos:[]});
-    if(!state.rooms.find(r=>r.name==="솔라동")) state.rooms.push({id:"solar",name:"솔라동",basePeople:5,maxPeople:8,address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션",photos:[]});
-    state.rooms=state.rooms.filter(r=>r.name==="스텔라동"||r.name==="솔라동"||r.active===true);
+function v16DedupeState(){
+  if(!state.settings) state.settings={};
+  state.settings.condolenceEmail=state.settings.condolenceEmail||"withm1905@withmedical.com";
+  state.settings.vacationEmail=state.settings.vacationEmail||"withm1905@withmedical.com";
+  state.settings.homeBadge=state.settings.homeBadge||"Company Welfare Platform";
+  state.settings.homeTitle=state.settings.homeTitle||"회원 승인형 회사 복지몰";
+  state.settings.homeDescription=state.settings.homeDescription||"직원 25명 규모에 맞춘 위드메디컬 복지몰입니다.";
+  if(!state.admins || !state.admins.length){
+    state.admins=[{id:"a1", name:"김경진", role:"admin", loginId:"with1905", password:"withm*1905", dept:"관리자"}];
   }
-  if(state.admins){
-    const seen=new Set();
-    state.admins=state.admins.filter(a=>{
-      const key=a.loginId||a.login_id||a.id;
-      if(seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+  const adminSeen=new Set();
+  state.admins=state.admins.filter(a=>{
+    const key=a.loginId||a.login_id||a.id;
+    if(adminSeen.has(key)) return false;
+    adminSeen.add(key);
+    if(a.login_id&&!a.loginId) a.loginId=a.login_id;
+    return true;
+  });
+  if(!state.rooms) state.rooms=[];
+  state.rooms=state.rooms.map(r=>{
+    if(r.name==="솔레동") r.name="솔라동";
+    return r;
+  });
+  const roomByName={};
+  state.rooms.forEach(r=>{
+    if(!roomByName[r.name]) roomByName[r.name]=r;
+  });
+  state.rooms=Object.values(roomByName);
+  if(!state.rooms.find(r=>r.name==="스텔라동")) state.rooms.push({id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
+  if(!state.rooms.find(r=>r.name==="솔라동")) state.rooms.push({id:"solar", name:"솔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
+  state.rooms=state.rooms.filter(r=>r.name==="스텔라동"||r.name==="솔라동");
+  state.rooms.forEach(r=>{
+    if(!r.photos) r.photos=[];
+    if(!r.basePeople) r.basePeople=5;
+    if(!r.maxPeople) r.maxPeople=8;
+  });
+  if(!state.menuSettings){
+    state.menuSettings={
+      stay:{name:"숙소예약",enabled:true},
+      family:{name:"경조사",enabled:true},
+      event:{name:"행사",enabled:true},
+      discount:{name:"할인",enabled:true},
+      vacation:{name:"휴가지원사업",enabled:true},
+      notice:{name:"공지",enabled:true}
+    };
   }
 }
 
@@ -151,6 +176,7 @@ function scheduleCloudSave(){
 async function saveCloudState(){
   if(!supabaseClient || cloudHydrating) return;
   try{
+    v16DedupeState();
     const payload=JSON.parse(JSON.stringify(state));
     const {error}=await supabaseClient.from("app_state").upsert({
       id:"main",
@@ -158,15 +184,19 @@ async function saveCloudState(){
       updated_at:new Date().toISOString()
     });
     if(error) throw error;
+    cloudStatus="Supabase 저장 완료";
   }catch(err){
     console.error("Supabase 저장 실패",err);
-    toast("Supabase 저장 실패: 설정을 확인해 주세요.");
+    cloudStatus="Supabase 저장 실패";
   }
 }
 
 async function initCloudSync(){
   if(!supabaseClient){
-    toast("Supabase 미연결: 로컬 모드로 실행됩니다.");
+    cloudStatus="Supabase 미연결";
+    v16DedupeState();
+    render();
+    toast("Supabase 미연결: 로컬 테스트 모드입니다.");
     return;
   }
   try{
@@ -175,16 +205,18 @@ async function initCloudSync(){
     if(data && data.data && Object.keys(data.data).length){
       cloudHydrating=true;
       state=data.data;
-      dedupeState();
+      v16DedupeState();
       migrate();
       localStorage.setItem("with_welfare_v5",JSON.stringify(state));
       cloudHydrating=false;
       cloudReady=true;
+      cloudStatus="Supabase 연결 완료";
       render();
       toast("Supabase 연결 완료");
     }else{
-      dedupeState();
+      v16DedupeState();
       cloudReady=true;
+      cloudStatus="초기 데이터 저장";
       await saveCloudState();
       render();
       toast("초기 데이터를 Supabase에 저장했습니다.");
@@ -192,8 +224,22 @@ async function initCloudSync(){
   }catch(err){
     cloudHydrating=false;
     console.error("Supabase 연결 실패",err);
+    cloudStatus="Supabase 연결 실패";
+    v16DedupeState();
+    render();
     toast("Supabase 연결 실패: URL/키/RLS를 확인해 주세요.");
   }
+}
+
+function v16CloudStatusPanel(){
+  const urlOk=!!SUPABASE_URL && SUPABASE_URL.includes(".supabase.co") && !SUPABASE_URL.includes("/rest/v1");
+  const keyOk=!!SUPABASE_KEY && (SUPABASE_KEY.startsWith("sb_publishable_") || SUPABASE_KEY.startsWith("eyJ"));
+  return `<div class="panel" style="margin-bottom:16px">
+    <h3>운영 연결 상태</h3>
+    <p class="muted">상태: <b>${cloudStatus}</b></p>
+    <p class="muted">SUPABASE_URL: ${urlOk?"정상":"확인 필요"} ${SUPABASE_URL?`<br><small>${SUPABASE_URL}</small>`:""}</p>
+    <p class="muted">SUPABASE_ANON_KEY: ${keyOk?"입력됨":"확인 필요"}</p>
+  </div>`;
 }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function money(n){return Number(n||0).toLocaleString()+"원";}

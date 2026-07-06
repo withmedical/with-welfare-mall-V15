@@ -14,4 +14,4 @@ const config = `window.WITH_WELFARE_CONFIG = {
 `;
 
 fs.writeFileSync("config.js", config, "utf8");
-console.log("config.js generated.");
+console.log("config.js generated for WITH Welfare Mall V16.");
