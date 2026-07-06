@@ -1,6 +1,6 @@
 {
-  "name": "with-welfare-mall-v16-discount-error-fixed",
-  "version": "16.99.4",
+  "name": "with-welfare-mall-v16-discount-forcefix",
+  "version": "16.99.2",
   "private": true,
   "scripts": {
     "build": "node build-config.js",
