@@ -141,3 +141,57 @@ button{min-height:42px}
   .table td:nth-child(6):before{content:"작업"}
   .table td:nth-child(7):before{content:"기타"}
 }
+
+
+/* V16.2 mobile-only fix: PC design remains unchanged */
+@media(min-width:981px){
+  .mobile-bottom-nav,.mobile-more-sheet{display:none!important}
+}
+
+@media(max-width:980px){
+  body{padding-bottom:82px!important}
+  .top .nav{display:none!important}
+  .mobile-bottom-nav{
+    display:grid!important;
+    grid-template-columns:repeat(5,1fr);
+    position:fixed;
+    left:0;right:0;bottom:0;
+    background:#fff;
+    border-top:1px solid #e6ebf3;
+    z-index:9999;
+    padding:7px 8px calc(7px + env(safe-area-inset-bottom));
+    box-shadow:0 -8px 24px rgba(31,54,99,.12);
+  }
+  .mobile-bottom-nav button{
+    display:block!important;
+    width:auto!important;
+    min-height:52px!important;
+    padding:4px 2px!important;
+    background:white!important;
+    color:#667085!important;
+    border-radius:14px!important;
+    border:0!important;
+  }
+  .mobile-bottom-nav button.active{
+    background:#eef3ff!important;
+    color:#2357d9!important;
+  }
+  .mobile-bottom-nav span{display:block;font-size:20px;line-height:1.1}
+  .mobile-bottom-nav small{display:block;font-size:11px;margin-top:3px;font-weight:900}
+  .mobile-more-sheet{
+    display:none;
+    position:fixed;
+    left:10px;right:10px;bottom:82px;
+    background:#fff;
+    border:1px solid #e6ebf3;
+    border-radius:22px;
+    z-index:9998;
+    padding:14px;
+    box-shadow:0 16px 42px rgba(31,54,99,.22);
+  }
+  .mobile-more-sheet.show{display:grid!important;gap:8px}
+  .mobile-more-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .mobile-more-head button{width:auto!important;min-height:36px!important;background:#eef3ff!important;color:#2357d9!important}
+  .mobile-more-sheet>button{width:100%!important;text-align:left!important;background:#f6f8fb!important;color:#172033!important}
+  .mobile-more-sheet>button.danger{background:#d92d20!important;color:#fff!important}
+}

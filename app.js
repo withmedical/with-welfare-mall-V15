@@ -336,7 +336,43 @@ function loginView(){
     </form>`:""}
   </div>`;
 }
-function layout(content){const u=user();return `<div class="top"><div class="topin"><div class="brand"><div class="logo">${state.settings.logoUrl?`<img src="${state.settings.logoUrl}">`:`W`}</div><div><b>WITH Welfare Mall</b><small>${u.name} · ${u.role==="admin"?"관리자":"임직원"}</small></div></div><div class="nav">${navItems().map(item=>`<button class="${page===item.key?'active':''}" onclick="setPage('${item.key}')">${item.name}</button>`).join("")}${u.role==="admin"?`<button class="${page==='admin'?'active':''}" onclick="setPage('admin')">관리자</button>`:`<button class="${page==='mypage'?'active':''}" onclick="setPage('mypage')">내 정보</button>`}<button class="gray" onclick="logout()">로그아웃</button></div></div></div><div class="wrap">${content}</div><div class="footer">WITH Welfare Mall · 제주 사계펜션 복지몰</div>`;}
+
+function toggleMobileMore(){
+  const m=document.getElementById("mobileMoreSheet");
+  if(m) m.classList.toggle("show");
+}
+function closeMobileMore(){
+  const m=document.getElementById("mobileMoreSheet");
+  if(m) m.classList.remove("show");
+}
+function goMobile(p){
+  closeMobileMore();
+  setPage(p);
+}
+function mobileBottomNav(){
+  if(!session) return "";
+  const isAdmin=user() && user().role==="admin";
+  const moreItems=[
+    {key:"discount",name:pageLabel("discount"),show:ensureEnabledPage("discount")},
+    {key:"vacation",name:pageLabel("vacation"),show:ensureEnabledPage("vacation")},
+    {key:"notice",name:pageLabel("notice"),show:ensureEnabledPage("notice")},
+    {key:isAdmin?"admin":"mypage",name:isAdmin?"관리자":"내 정보",show:true}
+  ].filter(x=>x.show);
+  return `<div id="mobileMoreSheet" class="mobile-more-sheet">
+    <div class="mobile-more-head"><b>더보기</b><button onclick="closeMobileMore()">닫기</button></div>
+    ${moreItems.map(i=>`<button onclick="goMobile('${i.key}')">${i.name}</button>`).join("")}
+    <button class="danger" onclick="logout()">로그아웃</button>
+  </div>
+  <nav class="mobile-bottom-nav">
+    <button class="${page==='home'?'active':''}" onclick="goMobile('home')"><span>⌂</span><small>홈</small></button>
+    <button class="${page==='stay'?'active':''}" onclick="goMobile('stay')"><span>🏡</span><small>숙소</small></button>
+    <button class="${page==='family'?'active':''}" onclick="goMobile('family')"><span>🎁</span><small>경조사</small></button>
+    <button class="${page==='event'?'active':''}" onclick="goMobile('event')"><span>🎉</span><small>행사</small></button>
+    <button onclick="toggleMobileMore()"><span>☰</span><small>더보기</small></button>
+  </nav>`;
+}
+
+function layout(content){const u=user();return `<div class="top"><div class="topin"><div class="brand"><div class="logo">${state.settings.logoUrl?`<img src="${state.settings.logoUrl}">`:`W`}</div><div><b>WITH Welfare Mall</b><small>${u.name} · ${u.role==="admin"?"관리자":"임직원"}</small></div></div><div class="nav">${navItems().map(item=>`<button class="${page===item.key?'active':''}" onclick="setPage('${item.key}')">${item.name}</button>`).join("")}${u.role==="admin"?`<button class="${page==='admin'?'active':''}" onclick="setPage('admin')">관리자</button>`:`<button class="${page==='mypage'?'active':''}" onclick="setPage('mypage')">내 정보</button>`}<button class="gray" onclick="logout()">로그아웃</button></div></div></div><div class="wrap">${content}</div>${mobileBottomNav()}<div class="footer">WITH Welfare Mall · 제주 사계펜션 복지몰</div>`;}
 
 
 function navItems(){
@@ -368,7 +404,31 @@ function isBlocked(roomId,checkin,checkout){return (state.roomBlocks||[]).some(b
 function dateList(checkin,checkout){const arr=[];let d=new Date(checkin),e=new Date(checkout);while(d<e){arr.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+1);}return arr;}
 function surchargeForDate(ds){const d=new Date(ds);let rate=0;(state.seasonRates||[]).filter(x=>x.enabled!==false).forEach(r=>{if(r.type==="weekend"&&(d.getDay()===5||d.getDay()===6))rate=Math.max(rate,+r.surchargeRate||0);if(r.type==="dateRange"&&ds>=r.start&&ds<=r.end)rate=Math.max(rate,+r.surchargeRate||0);});return rate;}
 function calcBaseBySeason(checkin,checkout){return dateList(checkin,checkout).reduce((s,ds)=>s+Math.round(state.settings.nightlyPrice*(1+surchargeForDate(ds)/100)),0);}
-function adminReservationButtons(r){let h=adminButtons("reservations",r.id,r.status);if(r.status==="승인"){h+=`<button class="secondary" onclick="markCheckin('${r.id}')">QR 체크인</button><button class="gray" onclick="markCheckout('${r.id}')">체크아웃</button>`;}return h||"-";}
+function adminReservationButtons(r){
+  let html="";
+  if(r.status==="대기"){
+    html += `<button onclick="setStatus('reservations','${r.id}','승인')">승인</button><button class="danger" onclick="setStatus('reservations','${r.id}','반려')">반려</button>`;
+  }
+  if(r.status==="승인"){
+    html += `<button class="danger" onclick="adminCancelReservation('${r.id}')">예약취소</button>`;
+    html += `<button class="secondary" onclick="markCheckin('${r.id}')">QR 체크인</button><button class="gray" onclick="markCheckout('${r.id}')">체크아웃</button>`;
+  }
+  if(r.status==="취소"){
+    html += `<button class="secondary" onclick="setStatus('reservations','${r.id}','대기')">대기로 복원</button>`;
+  }
+  return html||"-";
+}
+function adminCancelReservation(id){
+  const r=state.reservations.find(x=>x.id===id);
+  if(!r) return toast("예약 정보를 찾을 수 없습니다.");
+  if(!confirm("승인된 예약을 취소 처리할까요? 취소 후 해당 날짜는 다시 예약 가능합니다.")) return;
+  r.status="취소";
+  r.checkinStatus=r.checkinStatus||"관리자 취소";
+  if(typeof audit==="function") audit("숙소 예약 관리자 취소",`${r.userName||""} / ${r.roomName||""} / ${r.checkin||""}~${r.checkout||""}`);
+  save();
+  toast("예약이 취소되었습니다.");
+  render();
+}
 function markCheckin(id){const r=state.reservations.find(x=>x.id===id);r.checkinStatus="체크인 완료";audit("QR 체크인",`${r.userName}/${r.roomName}/${r.qrCode||""}`);save();toast("체크인 완료");render();}
 function markCheckout(id){const r=state.reservations.find(x=>x.id===id);r.checkinStatus="체크아웃 완료";audit("체크아웃",`${r.userName}/${r.roomName}`);save();toast("체크아웃 완료");render();}
 function validateFile(input){
