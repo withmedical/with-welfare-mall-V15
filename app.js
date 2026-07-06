@@ -80,6 +80,7 @@ function save(){
   scheduleCloudSave();
 }
 function migrate(){
+  finalHotfixCleanState();
   let changed=false;
   if(!state.admins){state.admins=seed.admins; changed=true;}
   if(!state.usePolicies){state.usePolicies=seed.usePolicies; changed=true;}
@@ -224,6 +225,7 @@ async function saveCloudState(){
 }
 
 async function initCloudSync(){
+  finalHotfixCleanState();
   if(!supabaseClient){
     cloudStatus="Supabase 미연결";
     v16DedupeState();
@@ -273,6 +275,39 @@ function v16CloudStatusPanel(){
     <p class="muted">SUPABASE_ANON_KEY: ${keyOk?"입력됨":"확인 필요"}</p>
   </div>`;
 }
+
+function finalHotfixCleanState(){
+  // QR / 이용대기 잔여 데이터 완전 제거
+  if(state.reservations){
+    state.reservations.forEach(r=>{
+      delete r.qrCode;
+      if(!r.checkinStatus || r.checkinStatus==="이용대기" || r.checkinStatus==="이용대기" || String(r.checkinStatus).includes("QR")){
+        r.checkinStatus="이용대기";
+      }
+    });
+  }
+  // 비밀번호 초기화 요청에도 잘못 붙은 QR/이용대기 데이터 제거
+  if(state.passwordResetRequests){
+    state.passwordResetRequests.forEach(r=>{
+      delete r.qrCode;
+      if(r.checkinStatus || r.qrStatus){
+        delete r.checkinStatus;
+        delete r.qrStatus;
+      }
+    });
+  }
+  // 휴가지원/메일 발송대기 비활성화
+  if(state.menuSettings && state.menuSettings.vacation){
+    state.menuSettings.vacation.enabled=false;
+  }
+  if(state.mailOutbox){
+    state.mailOutbox=[];
+  }
+  if(!state.discountApplications) state.discountApplications=[];
+  if(!state.discounts) state.discounts=[];
+  if(!state.auditLogs) state.auditLogs=[];
+}
+
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function money(n){return Number(n||0).toLocaleString()+"원";}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.innerText=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
@@ -568,7 +603,7 @@ function approvedReservationCards(){
   if(!rows.length) return "";
   return `<section class="section"><h2>승인된 숙소 예약</h2><div class="grid2">${rows.map(r=>{
     let action="";
-    if(!r.checkinStatus || r.checkinStatus==="미체크인" || r.checkinStatus==="이용대기"){
+    if(!r.checkinStatus || r.checkinStatus==="이용대기" || r.checkinStatus==="이용대기"){
       action+=`<button onclick="markCheckin('${r.id}')">체크인</button>`;
     }else if(r.checkinStatus==="체크인 완료"){
       action+=`<button onclick="markCheckout('${r.id}')">체크아웃</button>`;
@@ -677,7 +712,7 @@ function userReservationButtons(r){
     html+=`<button class="danger" onclick="userCancel('reservations','${r.id}')">취소</button>`;
   }
   if(r.status==="승인"){
-    if(!r.checkinStatus || r.checkinStatus==="미체크인" || r.checkinStatus==="이용대기"){
+    if(!r.checkinStatus || r.checkinStatus==="이용대기" || r.checkinStatus==="이용대기"){
       html+=`<button onclick="markCheckin('${r.id}')">체크인</button>`;
     }else if(r.checkinStatus==="체크인 완료"){
       html+=`<button onclick="markCheckout('${r.id}')">체크아웃</button>`;
@@ -704,10 +739,13 @@ function deleteOne(type,id){
 function adminButtons(type,id,status){
   return commonAdminButtons(type,id);
 }
-function setStatus(type,id,status){state[type].find(x=>x.id===id).status=status;save();toast(`${status} 처리되었습니다.`);render();}
-
-
-
+function setStatus(type,id,status){
+  const row=(state[type]||[]).find(x=>x.id===id);
+  if(!row)return toast("대상을 찾을 수 없습니다.");
+  row.status=status;
+  if(type==="reservations" && status==="승인" && (!row.checkinStatus || row.checkinStatus==="이용대기")) row.checkinStatus="이용대기";
+  save();toast(`${status} 처리되었습니다.`);render();
+}
 function getCondolenceTypeId(t){
   return t.id || ("ct_" + String(t.name||t).replace(/\s+/g,"_"));
 }
@@ -941,6 +979,18 @@ function changeMyPassword(e){
   toast("비밀번호가 변경되었습니다.");
   render();
 }
+
+function safeAdminSection(fnName){
+  try{
+    if(typeof window[fnName]==="function") return window[fnName]();
+    if(typeof eval(fnName)==="function") return eval(fnName)();
+  }catch(e){
+    console.error("관리자 탭 오류",fnName,e);
+    return `<div class="panel"><h3>관리자 탭 오류</h3><p class="muted">${fnName} 화면에서 오류가 발생했습니다. 새로고침 후 다시 시도해 주세요.</p><pre style="white-space:pre-wrap;color:#b42318">${e.message||e}</pre></div>`;
+  }
+  return `<div class="panel empty">화면을 찾을 수 없습니다.</div>`;
+}
+
 function admin(){
   const tabs=[
     ["adminDashboard","대시보드"],
@@ -1208,13 +1258,8 @@ function discountApplicationTable(rows,admin){
   return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>혜택명</th><th>신청자</th><th>부서</th><th>연락처</th><th>신청일</th><th>상태</th><th>관리</th></tr></thead><tbody>
     ${rows.map(a=>`<tr>
       ${admin?`<td>${rowCheck('chkDiscountApply',a.id)}</td>`:""}
-      <td>${a.title}</td>
-      <td>${a.userName}</td>
-      <td>${a.dept||""}</td>
-      <td>${a.phone||""}</td>
-      <td>${a.createdAt||""}</td>
-      <td><span class="status ${a.status}">${a.status}</span></td>
-      <td>${admin?commonAdminButtons('discountApplications',a.id):"-"}</td>
+      <td>${a.title}</td><td>${a.userName}</td><td>${a.dept||""}</td><td>${a.phone||""}</td><td>${a.createdAt||""}</td><td><span class="status ${a.status}">${a.status}</span></td>
+      <td>${admin?`<button onclick="setStatus('discountApplications','${a.id}','승인')">승인</button><button class="danger" onclick="setStatus('discountApplications','${a.id}','반려')">반려</button><button class="danger" onclick="deleteOne('discountApplications','${a.id}')">삭제</button>`:"-"}</td>
     </tr>`).join("")}
   </tbody></table>`;
 }
@@ -1227,40 +1272,31 @@ function cancelDiscountApplication(id){
   toast("신청이 취소되었습니다.");
   render();
 }
-function discountAdmin(embedded=false){
+function discountAdmin(embedded=true){
   if(!state.discounts) state.discounts=[];
-  if(!state.discountApplications) state.discountApplications=[];
   return `<div class="panel"><h3>할인 항목 추가</h3>
   <form class="form" onsubmit="addDiscount(event)">
     <label>카테고리<input name="category" required></label>
     <label>제목<input name="title" required></label>
     <label>할인 내용<input name="rate" required></label>
-    <label>링크<input name="link" placeholder="https://"></label>
     <label>신청 접수 여부<select name="applyEnabled"><option value="false">일반 안내</option><option value="true">신청 접수</option></select></label>
     <label>신청 제한 인원<input type="number" name="limitCount" value="0" min="0"><span class="muted">0은 제한 없음</span></label>
+    <label>링크<input name="link" placeholder="https://"></label>
     <label class="wide">이용 방법<textarea name="method"></textarea></label>
     <button class="wide">할인 항목 추가</button>
   </form></div>
   <section class="section"><h2>할인 항목 목록</h2>
-  <p class="muted">기존 할인 항목을 바로 수정하거나 삭제할 수 있습니다.</p>
   <table class="table"><thead><tr><th>카테고리</th><th>제목</th><th>할인</th><th>이용방법</th><th>신청/제한</th><th>링크</th><th>관리</th></tr></thead><tbody>
   ${state.discounts.map(d=>`<tr>
     <td><input id="dc_${d.id}" value="${d.category||""}"></td>
     <td><input id="dt_${d.id}" value="${d.title||""}"></td>
     <td><input id="dr_${d.id}" value="${d.rate||""}"></td>
     <td><input id="dm_${d.id}" value="${d.method||""}"></td>
-    <td>
-      <select id="da_${d.id}"><option value="false" ${!d.applyEnabled?'selected':''}>일반 안내</option><option value="true" ${d.applyEnabled?'selected':''}>신청 접수</option></select>
-      <input id="dlm_${d.id}" type="number" min="0" value="${d.limitCount||0}">
-      <span class="muted">현재 ${discountApplyCount(d.id)}명</span>
-    </td>
+    <td><select id="da_${d.id}"><option value="false" ${!d.applyEnabled?'selected':''}>일반 안내</option><option value="true" ${d.applyEnabled?'selected':''}>신청 접수</option></select><input id="dlm_${d.id}" type="number" min="0" value="${d.limitCount||0}"></td>
     <td><input id="dl_${d.id}" value="${d.link||""}"></td>
     <td class="actions"><button onclick="updateDiscount('${d.id}')">수정</button><button class="danger" onclick="deleteDiscount('${d.id}')">삭제</button></td>
   </tr>`).join("")||`<tr><td colspan="7">등록된 할인 항목이 없습니다.</td></tr>`}
-  </tbody></table></section>
-  <section class="section"><h2>할인 신청 접수 현황</h2>
-  ${adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply')}
-  ${discountApplicationTable(state.discountApplications||[],true)}</section>`;
+  </tbody></table></section>`;
 }
 function vacationAdminGroup(){
   return `<div class="group-box">
@@ -1314,17 +1350,10 @@ function deleteUser(id){
 
 function passwordResetAdmin(){
   const rows=state.passwordResetRequests||[];
-  if(!rows.length) return `<div class="panel empty">비밀번호 초기화 요청이 없습니다.</div>`;
-  return `<table class="table"><thead><tr><th>요청자</th><th>휴대폰</th><th>요청일</th><th>상태</th><th>임시 비밀번호</th><th>관리</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr>
-      <td>${r.userName}<br><span class="muted">${r.dept||""}</span></td>
-      <td>${r.phone}</td>
-      <td>${r.createdAt}</td>
-      <td><span class="status ${r.status}">${r.status}</span><br><span class="muted">QR ${r.qrCode||"-"}</span><br><span class="muted">${r.checkinStatus||"미체크인"}</span></td>
-      <td>${r.status==="요청"?`<input id="tmp_${r.id}" placeholder="임시 비밀번호 입력">`:`처리완료`}</td>
-      <td>${r.status==="요청"?`<button onclick="approvePasswordReset('${r.id}')">비밀번호 변경/승인</button><button class="danger" onclick="rejectPasswordReset('${r.id}')">반려</button>`:"-"}</td>
-    </tr>`).join("")}
-  </tbody></table>`;
+  if(!rows.length)return`<div class="panel empty">비밀번호 초기화 요청이 없습니다.</div>`;
+  return`<div class="panel"><h3>비밀번호 초기화 요청</h3><table class="table"><thead><tr><th>요청자</th><th>휴대폰</th><th>요청일</th><th>상태</th><th>임시 비밀번호</th><th>관리</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td>${r.name||r.userName||""}<br><span class="muted">${r.dept||""}</span></td><td>${r.phone||""}</td><td>${r.createdAt||""}</td><td><span class="status ${r.status||"접수"}">${r.status||"접수"}</span></td><td>${r.tempPassword||""}</td><td class="actions">${r.status==="처리완료"?"-":`<button onclick="completePasswordReset('${r.id}')">처리완료</button><button class="danger" onclick="deleteOne('passwordResetRequests','${r.id}')">삭제</button>`}</td></tr>`).join("")}
+  </tbody></table></div>`;
 }
 function approvePasswordReset(id){
   const r=state.passwordResetRequests.find(x=>x.id===id);
@@ -1421,48 +1450,28 @@ function discountAdmin(embedded=false){
 function addDiscount(e){
   e.preventDefault();
   const f=new FormData(e.target);
-  if(!state.discounts) state.discounts=[];
-  state.discounts.push({
-    id:uid(),
-    category:f.get("category"),
-    title:f.get("title"),
-    rate:f.get("rate"),
-    method:f.get("method")||"",
-    link:f.get("link")||"",
-    applyEnabled:f.get("applyEnabled")==="true",
-    limitCount:Number(f.get("limitCount")||0)
-  });
-  save();
-  toast("할인 항목이 추가되었습니다.");
-  render();
+  state.discounts.push({id:uid(),category:f.get("category"),title:f.get("title"),rate:f.get("rate"),method:f.get("method")||"",link:f.get("link")||"",applyEnabled:f.get("applyEnabled")==="true",limitCount:Number(f.get("limitCount")||0)});
+  save();toast("할인 항목이 추가되었습니다.");render();
 }
 function updateDiscount(id){
   const d=state.discounts.find(x=>x.id===id);
-  if(!d) return toast("할인 항목을 찾을 수 없습니다.");
+  if(!d)return toast("할인 항목을 찾을 수 없습니다.");
   d.category=document.getElementById("dc_"+id).value;
   d.title=document.getElementById("dt_"+id).value;
   d.rate=document.getElementById("dr_"+id).value;
   d.method=document.getElementById("dm_"+id).value;
-  d.link=document.getElementById("dl_"+id).value;
   d.applyEnabled=document.getElementById("da_"+id).value==="true";
   d.limitCount=Number(document.getElementById("dlm_"+id).value||0);
-  (state.discountApplications||[]).forEach(a=>{
-    if(a.discountId===id){a.title=d.title;a.category=d.category;}
-  });
-  save();
-  toast("할인 항목이 수정되었습니다.");
-  render();
+  d.link=document.getElementById("dl_"+id).value;
+  (state.discountApplications||[]).forEach(a=>{if(a.discountId===id){a.title=d.title;a.category=d.category;}});
+  save();toast("할인 항목이 수정되었습니다.");render();
 }
 function deleteDiscount(id){
   const d=state.discounts.find(x=>x.id===id);
-  if(!d) return toast("할인 항목을 찾을 수 없습니다.");
-  const applyCount=(state.discountApplications||[]).filter(a=>a.discountId===id).length;
-  const msg=applyCount?`신청 내역 ${applyCount}건이 있는 항목입니다. 할인 항목만 삭제하고 신청 내역은 보관할까요?`:"해당 할인 항목을 삭제할까요?";
-  if(!confirm(msg)) return;
+  if(!d)return toast("할인 항목을 찾을 수 없습니다.");
+  if(!confirm("해당 할인 항목을 삭제할까요?"))return;
   state.discounts=state.discounts.filter(x=>x.id!==id);
-  save();
-  toast("할인 항목이 삭제되었습니다.");
-  render();
+  save();toast("할인 항목이 삭제되었습니다.");render();
 }
 function noticeAdmin(){return`<div class="panel"><h3>공지 추가</h3><form class="form" onsubmit="addNotice(event)"><label>제목<input name="title" required></label><label>중요공지<select name="important"><option value="true">중요</option><option value="false">일반</option></select></label><label class="wide">내용<textarea name="body" required></textarea></label><button class="wide">공지 추가</button></form></div><section class="section"><h2>공지 목록</h2><table class="table"><thead><tr><th>제목</th><th>중요</th><th>내용</th><th>관리</th></tr></thead><tbody>${state.notices.map(n=>`<tr><td><input id="nt_${n.id}" value="${n.title}"></td><td><select id="ni_${n.id}"><option value="true" ${n.important?'selected':''}>중요</option><option value="false" ${!n.important?'selected':''}>일반</option></select></td><td><input id="nb_${n.id}" value="${n.body}"></td><td class="actions"><button onclick="updateNotice('${n.id}')">수정</button><button class="danger" onclick="deleteNotice('${n.id}')">삭제</button></td></tr>`).join("")}</tbody></table></section>`;}
 function addNotice(e){e.preventDefault();const f=new FormData(e.target);state.notices.push({id:uid(),title:f.get("title"),important:f.get("important")==="true",body:f.get("body"),views:0});save();toast("공지 추가");render();}
@@ -1560,6 +1569,14 @@ function stats(){
 }
 function exportCSV(){const rows=[["구분","신청자","부서","내용","일자","박수","금액","상태"]];state.reservations.forEach(r=>rows.push(["숙소예약",r.userName,r.dept,r.roomName,`${r.checkin}~${r.checkout}`,r.nights,r.amount||0,r.status]));state.condolences.forEach(r=>rows.push(["경조사",r.userName,r.dept,r.type,r.date,"",0,r.status]));state.vacationSupport.forEach(r=>rows.push(["휴가지원사업",r.userName,r.dept,r.type,r.date,"",0,r.status]));const csv="\ufeff"+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="welfare_export.csv";a.click();}
 function resetData(){if(!confirm("데모 데이터를 초기화할까요?"))return;localStorage.removeItem("with_welfare_v5");localStorage.removeItem("with_session_v5");state=load();session=null;toast("초기화되었습니다.");render();}
-function render(){if(!session)return loginView();if(!user()){logout();return;}if(!ensureEnabledPage(page)){page="home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount")app.innerHTML=discount();if(page==="vacation")page="home";if(page==="notice")app.innerHTML=notice();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
+
+function discountAdminGroup(){
+  return `<div class="group-box">
+    <div class="group-section"><div class="subtle-title"><h3>할인 항목 관리</h3><span class="muted">수정/삭제 가능</span></div>${discountAdmin()}</div>
+    <div class="group-section"><div class="subtle-title"><h3>할인 신청 현황</h3><span class="muted">승인/반려/삭제</span></div>${adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply')}${discountApplicationTable(state.discountApplications||[],true)}</div>
+  </div>`;
+}
+function render(){
+  finalHotfixCleanState();if(!session)return loginView();if(!user()){logout();return;}if(!ensureEnabledPage(page)){page="home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount")app.innerHTML=discount();if(page==="vacation")page="home";if(page==="notice")app.innerHTML=notice();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
 render();
 initCloudSync();

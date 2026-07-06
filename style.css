@@ -227,3 +227,6 @@ button{min-height:42px}
 /* V16 FINAL RESTORE */
 .manual-card textarea{min-height:140px}
 .approval-fixed{float:right}
+
+/* Hotfix */
+.table td .status + br + .muted:empty{display:none}
