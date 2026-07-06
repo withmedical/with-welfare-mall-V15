@@ -1,92 +1,53 @@
-# WITH Welfare Mall V15 실제 운영 세팅
+# WITH Welfare Mall V15.3 Stable 배포 방법
 
-V15 핵심 변경:
-- GitHub에 Supabase URL/Key를 직접 넣지 않습니다.
-- Cloudflare Pages 환경변수에서 config.js를 자동 생성합니다.
-- 기본 이메일 주소는 withm1905@withmedical.com 입니다.
-- 관리자 권한 분리는 제외했습니다. 관리자 1명 운영 기준입니다.
-
-## 1. Supabase 세팅
-
-Supabase SQL Editor에서 아래 파일을 실행합니다.
-
-supabase-v15-schema.sql
-
-실행 후 기본 관리자 계정이 생성됩니다.
-
-관리자 ID:
-with1905
-
-관리자 PW:
-withm*1905
-
-## 2. Supabase API 정보 확인
-
-Supabase → Settings → Data API
-
-복사할 것:
-- API URL
-- Publishable key
-
-주의:
-- Secret key는 절대 사용하지 않습니다.
-- Publishable key만 사용합니다.
-
-## 3. GitHub 업로드
-
-이 V15 폴더의 모든 파일을 GitHub repository에 업로드합니다.
-
-필수 파일:
-- index.html
-- app.js
-- style.css
-- build-config.js
-- package.json
-- supabase-v15-schema.sql
-- supabase/functions/send-email/index.ts
-
-## 4. Cloudflare Pages 설정
-
-Cloudflare → Workers & Pages → Pages → Connect Git
-
-설정:
-Framework preset: None
-Build command: npm run build
-Build output directory: /
-
-## 5. Cloudflare 환경변수 입력
-
-Cloudflare Pages 프로젝트 → Settings → Environment variables
-
-아래 3개를 추가합니다.
-
-SUPABASE_URL
-= Supabase Data API의 API URL
-
-SUPABASE_ANON_KEY
-= Supabase API Keys의 Publishable key
-
-SEND_EMAIL_FUNCTION
-= send-email
-
-저장 후 Redeploy 합니다.
-
-## 6. 접속 테스트
-
-Cloudflare Pages 주소로 접속합니다.
-
-관리자 로그인:
-ID: with1905
-PW: withm*1905
-
-## 7. 이메일 발송 설정
-
-EMAIL_SETUP.md 파일을 참고하세요.
+이번 V15.3은 V12/V13에서 잘 되던 기능을 다시 살린 안정판입니다.
 
 핵심:
-- Resend API Key 생성
-- Supabase Edge Function send-email 배포
-- Supabase Secret에 RESEND_API_KEY, FROM_EMAIL 입력
+- 숙소는 스텔라동/솔라동 2개만 기본 표시
+- 로고 변경 가능
+- 회원 관리 가능
+- 관리자 메뉴 유지
+- Supabase 연결은 app_state 방식으로 안정화
+- SUPABASE_URL에 /rest/v1/을 잘못 넣어도 자동으로 제거
 
-기본 이메일:
-withm1905@withmedical.com
+## 1. Supabase SQL 실행
+
+Supabase SQL Editor에서 아래 파일을 실행하세요.
+
+supabase-v15-3-stable-schema.sql
+
+## 2. Cloudflare 환경변수
+
+Cloudflare Pages > Settings > Variables and secrets
+
+SUPABASE_URL
+값 예시:
+https://sayflhlkrhbkhlgzsynz.supabase.co
+
+SUPABASE_ANON_KEY
+값:
+sb_publishable_... 로 시작하는 Publishable key
+
+SEND_EMAIL_FUNCTION
+값:
+send-email
+
+## 3. Build configuration
+
+Build command:
+npm run build
+
+Build output directory:
+/
+
+## 4. 배포
+
+GitHub에 파일을 업로드하거나 수정 후 Commit하면 Cloudflare가 자동 배포합니다.
+
+## 5. 관리자 로그인
+
+ID:
+with1905
+
+PW:
+withm*1905

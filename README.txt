@@ -1,27 +1,22 @@
-WITH Welfare Mall V15
+WITH Welfare Mall V15.3 Stable
 
-실제 운영용 방향으로 정리한 버전입니다.
+이번 버전은 V14/V15에서 단순화되며 빠졌던 기능을 다시 복원한 안정판입니다.
 
-주요 반영:
-- Cloudflare 환경변수 방식 적용
-- GitHub에 Supabase URL/Key를 직접 올리지 않음
-- build-config.js가 배포 시 config.js 자동 생성
-- 기본 이메일 주소를 withm1905@withmedical.com 으로 반영
-- 관리자 1명 운영 기준
-- 권한 분리 제외
-- Supabase 테이블 분리 구조 유지
-- Supabase Storage/Edge Function 구조 유지
+기준:
+- V12/V13의 완성된 화면과 기능 유지
+- Cloudflare 환경변수 방식 유지
+- Supabase app_state 동기화 방식으로 단순하고 안정적으로 운영
+- 직원 25명 규모 회사에 맞는 현실적인 무료 운영 구조
+
+수정:
+- 숙소 중복 방지
+- 스텔라동/솔라동 기본 유지
+- 로고 변경 기능 유지
+- 회원 관리 기능 유지
+- 관리자 페이지 기능 유지
+- SUPABASE_URL 자동 보정 (/rest/v1/ 제거)
+- 기본 메일 주소 withm1905@withmedical.com 반영
 
 관리자 로그인:
 ID: with1905
 PW: withm*1905
-
-배포 순서:
-1. Supabase에서 supabase-v15-schema.sql 실행
-2. GitHub에 파일 업로드
-3. Cloudflare Pages 연결
-4. Cloudflare 환경변수에 SUPABASE_URL / SUPABASE_ANON_KEY 입력
-5. Redeploy
-6. 관리자 로그인 테스트
-7. 이메일은 EMAIL_SETUP.md 참고
-.
