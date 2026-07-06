@@ -439,17 +439,70 @@ function calcBaseBySeason(checkin,checkout){return dateList(checkin,checkout).re
 
 function condolenceTable(rows,admin){
   if(!rows.length) return `<div class="panel empty">신청 내역이 없습니다.</div>`;
-  return `<table class="table"><thead><tr><th>신청자</th><th>구분</th><th>내용/대상</th><th>금액</th><th>상태</th><th>첨부</th><th>관리</th></tr></thead><tbody>
+  return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>신청자</th><th>구분/일자</th><th>내용/대상</th><th>금액</th><th>상태</th><th>증빙</th><th>승인/출력 관리</th></tr></thead><tbody>
   ${rows.map(c=>`<tr>
-    <td>${c.userName}<br><span class="muted">${c.dept||""} / ${c.position||""}</span></td>
-    <td>${c.type}<br>${c.eventDate||""}</td>
-    <td>${c.condolenceContent||""}<br><span class="muted">${c.targetName||""} / ${c.targetRelation||""}</span></td>
+    ${admin?`<td>${rowCheck('chkCondolence',c.id)}</td>`:""}
+    <td>${c.userName||""}<br><span class="muted">${c.dept||""} / ${c.position||""}<br>${c.contact||""}</span></td>
+    <td>${c.type||""}<br><span class="muted">${c.eventDate||c.date||""}</span></td>
+    <td>${c.condolenceContent||c.memo||""}<br><span class="muted">${c.targetName||""} / ${c.targetRelation||""}</span></td>
     <td>${money(c.amount||0)}</td>
-    <td><span class="status ${c.status}">${c.status}</span>${c.paymentStatus?`<br><span class="status">${c.paymentStatus}</span>`:""}</td>
+    <td><span class="status ${c.status||"접수"}">${c.status||"접수"}</span>${c.paymentStatus?`<br><span class="status">${c.paymentStatus}</span>`:""}</td>
     <td>${attachmentPreviewLink(c.attachment)}</td>
-    <td class="actions">${admin?condolenceAdminButtons(c):"-"}</td>
+    <td>${admin?condolenceAdminButtons(c):"-"}</td>
   </tr>`).join("")}</tbody></table>`;
 }
+
+function adminDataCleanupPanel(){
+  const items=[
+    {key:"reservations",label:"숙소 예약 내역",count:(state.reservations||[]).length},
+    {key:"condolences",label:"경조사 접수 내역",count:(state.condolences||[]).length},
+    {key:"eventApplications",label:"행사 신청 내역",count:(state.eventApplications||state.eventApps||[]).length, alt: state.eventApplications?"eventApplications":"eventApps"},
+    {key:"discountApplications",label:"할인 신청 내역",count:(state.discountApplications||[]).length},
+    {key:"vacationSupport",label:"휴가지원 신청 내역",count:(state.vacationSupport||state.vacations||[]).length, alt: state.vacationSupport?"vacationSupport":"vacations"},
+    {key:"mailOutbox",label:"메일 발송대기",count:(state.mailOutbox||[]).length},
+    {key:"auditLogs",label:"감사 로그",count:(state.auditLogs||[]).length}
+  ];
+  return `<div class="panel"><h3>데이터 정리</h3><p class="muted">신청 현황 데이터가 누적될 때 전체삭제할 수 있습니다. 삭제 전 확인창이 표시됩니다.</p>
+  <table class="table"><thead><tr><th>항목</th><th>건수</th><th>관리</th></tr></thead><tbody>
+    ${items.map(i=>`<tr><td>${i.label}</td><td>${i.count}건</td><td><button class="danger" onclick="clearRows('${i.alt||i.key}','${i.label}')">전체삭제</button></td></tr>`).join("")}
+  </tbody></table></div>`;
+}
+
+function adminSelectAll(className, checked){
+  document.querySelectorAll("." + className).forEach(x=>x.checked=checked);
+}
+function selectedIds(className){
+  return Array.from(document.querySelectorAll("." + className + ":checked")).map(x=>x.value);
+}
+function deleteRowsByIds(key, ids, label){
+  if(!ids.length) return toast("삭제할 항목을 선택해 주세요.");
+  if(!confirm(`${label} ${ids.length}건을 삭제할까요? 삭제 후 복구할 수 없습니다.`)) return;
+  state[key]=(state[key]||[]).filter(x=>!ids.includes(x.id));
+  save();
+  toast("선택 항목이 삭제되었습니다.");
+  render();
+}
+function clearRows(key, label){
+  const count=(state[key]||[]).length;
+  if(!count) return toast("삭제할 내역이 없습니다.");
+  if(!confirm(`${label} 전체 ${count}건을 모두 삭제할까요? 삭제 후 복구할 수 없습니다.`)) return;
+  state[key]=[];
+  save();
+  toast(`${label} 전체 내역이 삭제되었습니다.`);
+  render();
+}
+function adminBulkToolbar(key,label,className){
+  return `<div class="bulk-toolbar">
+    <button class="secondary" onclick="adminSelectAll('${className}',true)">전체선택</button>
+    <button class="secondary" onclick="adminSelectAll('${className}',false)">선택해제</button>
+    <button class="danger" onclick="deleteRowsByIds('${key}',selectedIds('${className}'),'${label}')">선택삭제</button>
+    <button class="danger" onclick="clearRows('${key}','${label}')">전체삭제</button>
+  </div>`;
+}
+function rowCheck(className,id){
+  return `<input type="checkbox" class="${className}" value="${id}">`;
+}
+
 function adminReservationButtons(r){
   let html="";
   if(r.status==="대기"){
@@ -572,13 +625,17 @@ html+=`<div class="day ${out?'out':''}"><div class="daynum">${d.getDate()}</div>
 function showReserve(roomId){const r=state.rooms.find(x=>x.id===roomId);document.getElementById("reserveForm").innerHTML=`<div class="panel"><h2>${r.name} 예약 신청</h2><form class="form" oninput="updateEstimate(this)" onsubmit="submitReservation(event,'${roomId}')"><label>체크인<input type="date" name="checkin" min="${today}" required></label><label>체크아웃<input type="date" name="checkout" min="${today}" required></label><label>이용 구분<select name="useType" required>${state.usePolicies.map(p=>`<option>${p.name}</option>`).join("")}</select></label><label>이용 인원<input type="number" name="people" min="1" max="${r.maxPeople}" value="${r.basePeople}" required></label><label>연락처<input name="phone" value="${user().phone||''}" required></label><label>입금자명<input name="payer" placeholder="입금 필요 시 입력"></label><label class="wide">요청사항<textarea name="memo"></textarea></label><div class="wide pricebox" id="estimate">선택한 조건에 따라 금액이 계산됩니다.</div><div class="wide"><button>예약 신청 제출</button></div></form></div>`;document.getElementById("reserveForm").scrollIntoView({behavior:"smooth"});}
 function updateEstimate(form){const nights=calcNights(form.checkin.value,form.checkout.value);const useType=form.useType.value;const p=getPolicy(useType);const price=calcPrice(useType,nights,form.checkin.value,form.checkout.value);const seasonBase=(form.checkin.value&&form.checkout.value)?calcBaseBySeason(form.checkin.value,form.checkout.value):state.settings.nightlyPrice*(nights||0);const txt=p.paymentRequired?`${p.name}: 시즌요금 ${money(seasonBase)} 기준 할인율 ${p.discountRate}% 적용 · 예상 입금액 ${money(price)} · 입금계좌 ${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`:`${p.name}: 무료 적용 조건입니다. 예상 ${nights||0}박`;document.getElementById("estimate").innerText=txt;}
 function submitReservation(e,roomId){e.preventDefault();const f=new FormData(e.target);const checkin=f.get("checkin"),checkout=f.get("checkout"),people=Number(f.get("people")),useType=f.get("useType");const room=state.rooms.find(r=>r.id===roomId);const nights=calcNights(checkin,checkout);if(nights<=0)return toast("체크아웃은 체크인 이후 날짜여야 합니다.");if(people>room.maxPeople)return toast(`${room.name} 최대 인원은 ${room.maxPeople}명입니다.`);if(isBlocked(roomId,checkin,checkout))return toast("해당 기간은 예약 차단 기간입니다.");if(!isRoomAvailable(roomId,checkin,checkout))return toast("해당 기간은 이미 예약되어 있습니다.");const used=annualUsedNights(user().id,checkin.slice(0,4));if(used+nights>state.settings.annualNightLimit)return toast(`직원당 연간 ${state.settings.annualNightLimit}박 기준을 초과합니다. 현재 ${used}박 사용/신청 중입니다.`);const amount=calcPrice(useType,nights,checkin,checkout);const policy=getPolicy(useType);state.reservations.push({id:uid(),userId:user().id,userName:user().name,dept:user().dept||"",roomId,roomName:room.name,checkin,checkout,nights,people,extraPeople:Math.max(0,people-room.basePeople),useType,discountRate:policy.discountRate,paymentRequired:policy.paymentRequired,amount,bankInfo:`${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`,phone:f.get("phone"),payer:f.get("payer"),memo:f.get("memo"),status:"대기",qrCode:`WM-${uid()}`,checkinStatus:"미체크인",createdAt:new Date().toLocaleString()});audit("숙소 예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);save();toast("예약 신청이 접수되었습니다.");setPage("stay");}
-function reservationTable(rows,admin){if(!rows.length)return`<div class="panel empty">예약 내역이 없습니다.</div>`;return`<table class="table"><thead><tr><th>숙소</th><th>신청자</th><th>기간</th><th>구분/금액</th><th>인원</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.roomName}</td><td>${r.userName}<br><span class="muted">${r.dept||""}</span></td><td>${r.checkin} ~ ${r.checkout}<br><b>${r.nights||calcNights(r.checkin,r.checkout)}박</b></td><td>${r.useType||"-"}<br>${r.amount?`<b>${money(r.amount)}</b><br><span class="muted">${r.bankInfo||""}</span>`:"무료"}</td><td>${r.people}명${r.extraPeople?`<br><span class="muted">추가 ${r.extraPeople}명</span>`:""}</td><td><span class="status ${r.status}">${r.status}</span><br><span class="muted">QR ${r.qrCode||"-"}</span><br><span class="muted">${r.checkinStatus||"미체크인"}</span></td><td class="actions">${admin?adminReservationButtons(r):userCancelButton("reservations",r.id,r.status)}</td></tr>`).join("")}</tbody></table>`;}
+function reservationTable(rows,admin){if(!rows.length)return`<div class="panel empty">예약 내역이 없습니다.</div>`;return`<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>숙소</th><th>신청자</th><th>기간</th><th>구분/금액</th><th>인원</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows.map(r=>`<tr>${admin?`<td>${rowCheck('chkReservation',r.id)}</td>`:""}<td>${r.roomName}</td><td>${r.userName}<br><span class="muted">${r.dept||""}</span></td><td>${r.checkin} ~ ${r.checkout}<br><b>${r.nights||calcNights(r.checkin,r.checkout)}박</b></td><td>${r.useType||"-"}<br>${r.amount?`<b>${money(r.amount)}</b><br><span class="muted">${r.bankInfo||""}</span>`:"무료"}</td><td>${r.people}명${r.extraPeople?`<br><span class="muted">추가 ${r.extraPeople}명</span>`:""}</td><td><span class="status ${r.status}">${r.status}</span><br><span class="muted">QR ${r.qrCode||"-"}</span><br><span class="muted">${r.checkinStatus||"미체크인"}</span></td><td class="actions">${admin?adminReservationButtons(r):userCancelButton("reservations",r.id,r.status)}</td></tr>`).join("")}</tbody></table>`;}
 function userCancelButton(type,id,status){return status==="대기"||status==="승인"?`<button class="danger" onclick="userCancel('${type}','${id}')">취소</button>`:"-";}
 function userCancel(type,id){state[type].find(x=>x.id===id).status="취소";save();toast("취소 처리되었습니다.");render();}
 function adminButtons(type,id,status){if(status!=="대기")return"-";return`<button onclick="setStatus('${type}','${id}','승인')">승인</button><button class="danger" onclick="setStatus('${type}','${id}','반려')">반려</button>`;}
 function setStatus(type,id,status){state[type].find(x=>x.id===id).status=status;save();toast(`${status} 처리되었습니다.`);render();}
 
 
+
+function getCondolenceTypeId(t){
+  return t.id || ("ct_" + String(t.name||t).replace(/\s+/g,"_"));
+}
 function condolenceAmountByType(type){
   const t=(state.condolenceTypes||[]).find(x=>(typeof x==="string"?x:x.name)===type);
   if(!t) return 0;
@@ -967,7 +1024,7 @@ function updateMenu(key){
 }
 function stayAdminGroup(){
   return `<div class="group-box">
-    <div class="group-section"><div class="subtle-title"><h3>숙소 예약 승인 현황</h3><span class="muted">승인/반려 처리</span></div>${reservationTable(state.reservations,true)}</div>
+    <div class="group-section"><div class="subtle-title"><h3>숙소 예약 승인 현황</h3><span class="muted">승인/반려 처리</span></div>${adminBulkToolbar('reservations','숙소 예약 내역','chkReservation')}${reservationTable(state.reservations,true)}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소/계좌/메일 기본 설정</h3></div>${settingsAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소 할인 조건 설정</h3></div>${policyAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사진 관리</h3></div>${roomPhotoAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>예약 차단 관리</h3></div>${roomBlockAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>성수기/주말 요금 설정</h3></div>${seasonRateAdmin()}</div>
   </div>`;
@@ -976,20 +1033,26 @@ function stayAdminGroup(){
 
 function condolenceAdminButtons(c){
   let html="";
-  if(c.status==="접수" || c.status==="대기"){
-    html+=`<button onclick="approveCondolence('${c.id}')">승인</button><button class="danger" onclick="rejectCondolence('${c.id}')">반려</button>`;
+  const status=c.status||"접수";
+  if(status==="접수" || status==="대기"){
+    html+=`<button onclick="approveCondolence('${c.id}')">승인</button>`;
+    html+=`<button class="danger" onclick="rejectCondolence('${c.id}')">반려</button>`;
   }
-  if(c.status==="승인"){
-    html+=`<button onclick="printCondolenceForm('${c.id}')">신청서 출력</button><button class="secondary" onclick="markCondolencePaid('${c.id}')">지급완료</button>`;
+  if(status==="승인"){
+    html+=`<button onclick="printCondolenceForm('${c.id}')">신청서 출력</button>`;
+    html+=`<button class="secondary" onclick="markCondolencePaid('${c.id}')">지급완료</button>`;
+    html+=`<button class="danger" onclick="rejectCondolence('${c.id}')">반려</button>`;
   }
-  if(c.status==="반려"){
+  if(status==="반려"){
     html+=`<button class="secondary" onclick="setCondolenceStatus('${c.id}','접수')">접수로 복원</button>`;
   }
-  if(c.status==="지급완료" || c.paymentStatus==="지급완료"){
+  if(status==="지급완료" || c.paymentStatus==="지급완료"){
     html+=`<button onclick="printCondolenceForm('${c.id}')">신청서 출력</button>`;
   }
-  html+=attachmentPreviewLink(c.attachment);
-  return html||"-";
+  if(c.attachment){
+    html+=`<button class="secondary" onclick="openAttachment('${c.attachment}')">증빙자료 출력</button>`;
+  }
+  return `<div class="actions">${html||"-"}</div>`;
 }
 function setCondolenceStatus(id,status){
   const c=state.condolences.find(x=>x.id===id);
@@ -1022,54 +1085,76 @@ function markCondolencePaid(id){
   render();
 }
 function condolenceTypeAdmin(){
-  return `<div class="panel"><h3>경조사 구분 및 신청금액 설정</h3>
+  const rows=(state.condolenceTypes||[]).map(t=>{
+    if(typeof t==="string") return {id:"ct_"+t,name:t,amount:0};
+    return {...t,id:getCondolenceTypeId(t),name:t.name,amount:Number(t.amount||0)};
+  });
+  return `<div class="panel"><h3>경조사 구분 추가</h3>
     <form class="form" onsubmit="addCondolenceType(event)">
-      <label>구분명<input name="name" required placeholder="예: 본인결혼"></label>
+      <label>구분명<input name="name" required placeholder="예: 본인결혼, 부친상, 자녀출산"></label>
       <label>신청금액<input type="number" name="amount" value="0" min="0" required></label>
-      <button class="wide">구분 추가</button>
+      <button class="wide">경조사 구분 추가</button>
     </form>
   </div>
-  <table class="table"><thead><tr><th>구분</th><th>신청금액</th><th>관리</th></tr></thead><tbody>
-    ${(state.condolenceTypes||[]).map(t=>`<tr>
-      <td><input id="ctn_${t.id}" value="${typeName(t)}"></td>
-      <td><input id="cta_${t.id}" type="number" min="0" value="${typeAmount(t)}"></td>
+  <h3 style="margin-top:18px">경조사 구분 목록 / 신청금액 설정</h3>
+  <p class="muted">직원이 경조사 구분을 선택하면 아래 신청금액이 자동으로 반영됩니다.</p>
+  <table class="table"><thead><tr><th>경조사 구분</th><th>신청금액</th><th>관리</th></tr></thead><tbody>
+    ${rows.map(t=>`<tr>
+      <td><input id="ctn_${t.id}" value="${t.name||""}"></td>
+      <td><input id="cta_${t.id}" type="number" min="0" value="${Number(t.amount||0)}"></td>
       <td class="actions"><button onclick="updateCondolenceType('${t.id}')">수정</button><button class="danger" onclick="deleteCondolenceType('${t.id}')">삭제</button></td>
-    </tr>`).join("")}
+    </tr>`).join("")||`<tr><td colspan="3">등록된 구분이 없습니다.</td></tr>`}
   </tbody></table>`;
 }
 function addCondolenceType(e){
   e.preventDefault();
   const f=new FormData(e.target);
   if(!state.condolenceTypes) state.condolenceTypes=[];
-  state.condolenceTypes.push({id:uid(),name:f.get("name"),amount:Number(f.get("amount")||0)});
+  const name=String(f.get("name")||"").trim();
+  if(!name) return toast("구분명을 입력해 주세요.");
+  if(state.condolenceTypes.some(t=>typeName(t)===name)) return toast("이미 등록된 구분입니다.");
+  state.condolenceTypes.push({id:uid(),name,amount:Number(f.get("amount")||0)});
   save();
   toast("경조사 구분이 추가되었습니다.");
   render();
 }
 function updateCondolenceType(id){
-  const t=state.condolenceTypes.find(x=>x.id===id);
-  if(!t) return toast("구분을 찾을 수 없습니다.");
-  t.name=document.getElementById("ctn_"+id).value;
-  t.amount=Number(document.getElementById("cta_"+id).value||0);
+  const idx=(state.condolenceTypes||[]).findIndex(x=>getCondolenceTypeId(x)===id);
+  if(idx<0) return toast("구분을 찾을 수 없습니다.");
+  const oldName=typeName(state.condolenceTypes[idx]);
+  const newName=document.getElementById("ctn_"+id).value;
+  const amount=Number(document.getElementById("cta_"+id).value||0);
+  state.condolenceTypes[idx]={id,name:newName,amount};
+  // 기존 접수 건의 구분명도 같이 변경
+  (state.condolences||[]).forEach(c=>{if(c.type===oldName)c.type=newName;});
   save();
-  toast("경조사 구분이 수정되었습니다.");
+  toast("경조사 구분/신청금액이 수정되었습니다.");
   render();
 }
 function deleteCondolenceType(id){
-  const t=state.condolenceTypes.find(x=>x.id===id);
-  if(!t) return toast("구분을 찾을 수 없습니다.");
-  if(state.condolences.some(c=>c.type===t.name)){
+  const idx=(state.condolenceTypes||[]).findIndex(x=>getCondolenceTypeId(x)===id);
+  if(idx<0) return toast("구분을 찾을 수 없습니다.");
+  const name=typeName(state.condolenceTypes[idx]);
+  if((state.condolences||[]).some(c=>c.type===name)){
     return toast("신청 내역이 있는 구분은 삭제할 수 없습니다.");
   }
-  state.condolenceTypes=state.condolenceTypes.filter(x=>x.id!==id);
+  if(!confirm("해당 경조사 구분을 삭제할까요?")) return;
+  state.condolenceTypes.splice(idx,1);
   save();
   toast("삭제되었습니다.");
   render();
 }
 function condolenceAdminGroup(){
   return `<div class="group-box">
-    <div class="group-section"><div class="subtle-title"><h3>경조사 설정</h3><span class="muted">구분별 신청금액 설정</span></div>${condolenceTypeAdmin()}</div>
-    <div class="group-section"><div class="subtle-title"><h3>경조사 접수 현황</h3><span class="muted">승인 후 A4 신청서 출력 가능</span></div>${condolenceTable(state.condolences||[],true)}</div>
+    <div class="group-section">
+      <div class="subtle-title"><h3>경조사 구분 관리</h3><span class="muted">구분별 신청금액 설정</span></div>
+      ${condolenceTypeAdmin()}
+    </div>
+    <div class="group-section">
+      <div class="subtle-title"><h3>경조사 접수 현황</h3><span class="muted">승인, 반려, 신청서 출력, 증빙자료 출력</span></div>
+      ${adminBulkToolbar('condolences','경조사 접수 내역','chkCondolence')}
+      ${condolenceTable(state.condolences||[],true)}
+    </div>
   </div>`;
 }
 function eventAdminGroup(){
@@ -1082,15 +1167,16 @@ function eventAdminGroup(){
 
 function discountApplicationTable(rows,admin){
   if(!rows.length) return `<div class="panel empty">신청 내역이 없습니다.</div>`;
-  return `<table class="table"><thead><tr><th>혜택명</th><th>신청자</th><th>부서</th><th>연락처</th><th>신청일</th><th>상태</th><th>관리</th></tr></thead><tbody>
+  return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>혜택명</th><th>신청자</th><th>부서</th><th>연락처</th><th>신청일</th><th>상태</th><th>관리</th></tr></thead><tbody>
     ${rows.map(a=>`<tr>
+      ${admin?`<td>${rowCheck('chkDiscountApply',a.id)}</td>`:""}
       <td>${a.title}</td>
       <td>${a.userName}</td>
       <td>${a.dept||""}</td>
       <td>${a.phone||""}</td>
       <td>${a.createdAt||""}</td>
       <td><span class="status ${a.status}">${a.status}</span></td>
-      <td>${admin?`<button class="danger" onclick="cancelDiscountApplication('${a.id}')">취소</button>`:"-"}</td>
+      <td>${admin?`<button class="danger" onclick="deleteRowsByIds('discountApplications',['${a.id}'],'할인 신청 내역')">삭제</button>`:"-"}</td>
     </tr>`).join("")}
   </tbody></table>`;
 }
@@ -1103,13 +1189,41 @@ function cancelDiscountApplication(id){
   toast("신청이 취소되었습니다.");
   render();
 }
-function discountAdminGroup(){
-  return `<div class="group-box">
-    <div class="group-section"><div class="subtle-title"><h3>할인 항목 등록 및 수정</h3></div>${discountAdmin()}</div>
-    <div class="group-section"><div class="subtle-title"><h3>할인 항목 미리보기</h3></div><div class="grid4">${state.discounts.map(d=>`<div class="card"><span class="badge">${d.category}</span><h3>${d.title}</h3><p>${d.rate}</p><p class="muted">${d.method}</p></div>`).join("")}</div></div>
-  </div>`;
+function discountAdmin(embedded=false){
+  if(!state.discounts) state.discounts=[];
+  if(!state.discountApplications) state.discountApplications=[];
+  return `<div class="panel"><h3>할인 항목 추가</h3>
+  <form class="form" onsubmit="addDiscount(event)">
+    <label>카테고리<input name="category" required></label>
+    <label>제목<input name="title" required></label>
+    <label>할인 내용<input name="rate" required></label>
+    <label>링크<input name="link" placeholder="https://"></label>
+    <label>신청 접수 여부<select name="applyEnabled"><option value="false">일반 안내</option><option value="true">신청 접수</option></select></label>
+    <label>신청 제한 인원<input type="number" name="limitCount" value="0" min="0"><span class="muted">0은 제한 없음</span></label>
+    <label class="wide">이용 방법<textarea name="method"></textarea></label>
+    <button class="wide">할인 항목 추가</button>
+  </form></div>
+  <section class="section"><h2>할인 항목 목록</h2>
+  <p class="muted">기존 할인 항목을 바로 수정하거나 삭제할 수 있습니다.</p>
+  <table class="table"><thead><tr><th>카테고리</th><th>제목</th><th>할인</th><th>이용방법</th><th>신청/제한</th><th>링크</th><th>관리</th></tr></thead><tbody>
+  ${state.discounts.map(d=>`<tr>
+    <td><input id="dc_${d.id}" value="${d.category||""}"></td>
+    <td><input id="dt_${d.id}" value="${d.title||""}"></td>
+    <td><input id="dr_${d.id}" value="${d.rate||""}"></td>
+    <td><input id="dm_${d.id}" value="${d.method||""}"></td>
+    <td>
+      <select id="da_${d.id}"><option value="false" ${!d.applyEnabled?'selected':''}>일반 안내</option><option value="true" ${d.applyEnabled?'selected':''}>신청 접수</option></select>
+      <input id="dlm_${d.id}" type="number" min="0" value="${d.limitCount||0}">
+      <span class="muted">현재 ${discountApplyCount(d.id)}명</span>
+    </td>
+    <td><input id="dl_${d.id}" value="${d.link||""}"></td>
+    <td class="actions"><button onclick="updateDiscount('${d.id}')">수정</button><button class="danger" onclick="deleteDiscount('${d.id}')">삭제</button></td>
+  </tr>`).join("")||`<tr><td colspan="7">등록된 할인 항목이 없습니다.</td></tr>`}
+  </tbody></table></section>
+  <section class="section"><h2>할인 신청 접수 현황</h2>
+  ${adminBulkToolbar('discountApplications','할인 신청 내역','chkDiscountApply')}
+  ${discountApplicationTable(state.discountApplications||[],true)}</section>`;
 }
-
 function vacationAdminGroup(){
   return `<div class="group-box">
     <div class="group-section"><div class="subtle-title"><h3>휴가지원사업 접수 현황</h3><span class="muted">신청 즉시 접수완료</span></div>${genericTable(state.vacationSupport,"vacationSupport",false)}</div>
@@ -1280,6 +1394,9 @@ function updateDiscount(id){
   d.link=document.getElementById("dl_"+id).value;
   d.applyEnabled=document.getElementById("da_"+id).value==="true";
   d.limitCount=Number(document.getElementById("dlm_"+id).value||0);
+  (state.discountApplications||[]).forEach(a=>{
+    if(a.discountId===id){a.title=d.title;a.category=d.category;}
+  });
   save();
   toast("할인 항목이 수정되었습니다.");
   render();
@@ -1287,11 +1404,9 @@ function updateDiscount(id){
 function deleteDiscount(id){
   const d=state.discounts.find(x=>x.id===id);
   if(!d) return toast("할인 항목을 찾을 수 없습니다.");
-  if((state.discountApplications||[]).some(a=>a.discountId===id && a.status!=="취소")){
-    if(!confirm("신청 내역이 있는 항목입니다. 그래도 삭제할까요? 신청 내역은 유지됩니다.")) return;
-  }else{
-    if(!confirm("해당 할인 항목을 삭제할까요?")) return;
-  }
+  const applyCount=(state.discountApplications||[]).filter(a=>a.discountId===id).length;
+  const msg=applyCount?`신청 내역 ${applyCount}건이 있는 항목입니다. 할인 항목만 삭제하고 신청 내역은 보관할까요?`:"해당 할인 항목을 삭제할까요?";
+  if(!confirm(msg)) return;
   state.discounts=state.discounts.filter(x=>x.id!==id);
   save();
   toast("할인 항목이 삭제되었습니다.");

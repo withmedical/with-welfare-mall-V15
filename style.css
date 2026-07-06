@@ -205,3 +205,20 @@ button{min-height:42px}
 @media print{
   body.printing *{visibility:hidden}
 }
+
+
+/* V16.5 condolence admin visibility */
+.group-section .actions{display:flex;gap:6px;flex-wrap:wrap}
+.group-section .actions button{min-width:86px}
+@media(max-width:980px){
+  .group-section .actions button{width:100%!important}
+}
+
+
+/* V16.6 admin delete controls */
+.bulk-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.bulk-toolbar button{width:auto}
+.table input[type="checkbox"]{width:18px;height:18px}
+@media(max-width:980px){
+  .bulk-toolbar button{width:100%!important}
+}
