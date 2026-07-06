@@ -53,7 +53,7 @@ const seed={
   condolences:[],
   events:[
     {id:"ev1",title:"하계 워크숍",date:"2026-07-19",limit:40,memo:"전사 워크숍 참석 신청",isOpen:true},
-    {id:"ev2",title:"가족 초청 행사",date:"2026-09-12",limit:60,memo:"임직원 가족 초청 행사",isOpen:true}
+    {id:"ev2",title:"가족 초청 이벤트",date:"2026-09-12",limit:60,memo:"임직원 가족 초청 이벤트",isOpen:true}
   ],
   eventApplications:[],
   discounts:[
@@ -110,14 +110,14 @@ function migrate(){
   if(!state.settings.logoUrl){state.settings.logoUrl="logo.gif"; changed=true;}
   if(!state.settings.homeBadge){state.settings.homeBadge="Company Welfare Platform"; changed=true;}
   if(!state.settings.homeTitle){state.settings.homeTitle="회원 승인형 회사 복지몰"; changed=true;}
-  if(!state.settings.homeDescription){state.settings.homeDescription="임직원을 위한 숙소 예약, 경조사, 행사, 제휴 할인 복지 서비스를 한곳에서 이용할 수 있습니다."; changed=true;}
-  if(!state.settings.homeButtons){state.settings.homeButtons=[{id:"hb1",label:"숙소 예약하기",page:"stay"},{id:"hb2",label:"할인 혜택 보기",page:"discount"}]; changed=true;}
+  if(!state.settings.homeDescription){state.settings.homeDescription="임직원을 위한 숙소 예약, 경조사, 이벤트 복지 서비스를 한곳에서 이용할 수 있습니다."; changed=true;}
+  if(!state.settings.homeButtons){state.settings.homeButtons=[{id:"hb1",label:"숙소 예약하기",page:"stay"},{id:"hb2",label:"이벤트 보기",page:"event"}]; changed=true;}
   if(!state.menuSettings){
     state.menuSettings={
       stay:{name:"숙소예약",enabled:true},
       family:{name:"경조사",enabled:true},
-      event:{name:"행사",enabled:true},
-      discount:{name:"할인",enabled:true},
+      event:{name:"이벤트",enabled:true},
+      discount:{name:"할인",enabled:false},
       notice:{name:"공지",enabled:true}
     };
     changed=true;
@@ -192,8 +192,8 @@ function v16DedupeState(){
     state.menuSettings={
       stay:{name:"숙소예약",enabled:true},
       family:{name:"경조사",enabled:true},
-      event:{name:"행사",enabled:true},
-      discount:{name:"할인",enabled:true},
+      event:{name:"이벤트",enabled:true},
+      discount:{name:"할인",enabled:false},
       notice:{name:"공지",enabled:true}
     };
   }
@@ -324,13 +324,13 @@ function finalHotfixCleanState(){
   if(state.settings && Array.isArray(state.settings.homeButtons)){
     state.settings.homeButtons=state.settings.homeButtons
       .filter(b=>b.page!=="vacation")
-      .map(b=>b.page==="vacation"?{...b,page:"discount",label:"할인 혜택 보기"}:b);
+      .map(b=>b.page==="vacation"?{...b,page:"event",label:"이벤트 보기"}:b);
     if(!state.settings.homeButtons.length){
-      state.settings.homeButtons=[{id:"hb1",label:"숙소 예약하기",page:"stay"},{id:"hb2",label:"할인 혜택 보기",page:"discount"}];
+      state.settings.homeButtons=[{id:"hb1",label:"숙소 예약하기",page:"stay"},{id:"hb2",label:"이벤트 보기",page:"event"}];
     }
   }
   if(state.settings && state.settings.homeDescription && String(state.settings.homeDescription).includes("휴가지원사업")){
-    state.settings.homeDescription="임직원을 위한 숙소 예약, 경조사, 행사, 제휴 할인 복지 서비스를 한곳에서 이용할 수 있습니다.";
+    state.settings.homeDescription="임직원을 위한 숙소 예약, 경조사, 이벤트 복지 서비스를 한곳에서 이용할 수 있습니다.";
   }
   if(state.mailOutbox){
     state.mailOutbox=[];
@@ -452,7 +452,6 @@ function mobileBottomNav(){
   if(!session) return "";
   const isAdmin=user() && user().role==="admin";
   const moreItems=[
-    {key:"discount",name:pageLabel("discount"),show:ensureEnabledPage("discount")},
     {key:"notice",name:pageLabel("notice"),show:ensureEnabledPage("notice")},
     {key:isAdmin?"admin":"mypage",name:isAdmin?"관리자":"내 정보",show:true}
   ].filter(x=>x.show);
@@ -465,7 +464,7 @@ function mobileBottomNav(){
     <button class="${page==='home'?'active':''}" onclick="goMobile('home')"><span>⌂</span><small>홈</small></button>
     <button class="${page==='stay'?'active':''}" onclick="goMobile('stay')"><span>🏡</span><small>숙소</small></button>
     <button class="${page==='family'?'active':''}" onclick="goMobile('family')"><span>🎁</span><small>경조사</small></button>
-    <button class="${page==='event'?'active':''}" onclick="goMobile('event')"><span>🎉</span><small>행사</small></button>
+    <button class="${page==='event'?'active':''}" onclick="goMobile('event')"><span>🎉</span><small>이벤트</small></button>
     <button onclick="toggleMobileMore()"><span>☰</span><small>더보기</small></button>
   </nav>`;
 }
@@ -475,7 +474,7 @@ function layout(content){const u=user();return `<div class="top"><div class="top
 
 function navItems(){
   const base=[{key:"home",name:"홈",enabled:true}];
-  const keys=["stay","family","event","discount","notice"];
+  const keys=["stay","family","event","notice"];
   keys.forEach(k=>{
     const m=state.menuSettings?.[k]||{name:k,enabled:true};
     if(m.enabled) base.push({key:k,name:m.name,enabled:true});
@@ -525,7 +524,7 @@ function adminDataCleanupPanel(){
   const items=[
     {key:"reservations",label:"숙소 예약 내역",count:(state.reservations||[]).length},
     {key:"condolences",label:"경조사 접수 내역",count:(state.condolences||[]).length},
-    {key:"eventApplications",label:"행사 신청 내역",count:(state.eventApplications||state.eventApps||[]).length, alt: state.eventApplications?"eventApplications":"eventApps"},
+    {key:"eventApplications",label:"이벤트 신청 내역",count:(state.eventApplications||state.eventApps||[]).length, alt: state.eventApplications?"eventApplications":"eventApps"},
     {key:"discountApplications",label:"할인 신청 내역",count:(state.discountApplications||[]).length},
     {key:"auditLogs",label:"감사 로그",count:(state.auditLogs||[]).length}
   ];
@@ -682,8 +681,7 @@ function home(){
   const featureItems=[
     ["stay","🏡",pageLabel("stay"),"제주 사계펜션 예약 및 사용 현황"],
     ["family","🎁",pageLabel("family"),"경조사 신청 및 접수 내역"],
-    ["event","🎉",pageLabel("event"),"사내 행사 참여 신청"],
-    ["discount","🏷️",pageLabel("discount"),"제휴 할인 혜택 안내"],
+    ["event","🎉",pageLabel("event"),"사내 이벤트 참여 신청"],
 
     ["notice","📢",pageLabel("notice"),"복지몰 공지 확인"]
   ].filter(x=>ensureEnabledPage(x[0]));
@@ -703,7 +701,7 @@ function home(){
   <section class="kpi-row">
     <div class="kpi-card"><small>숙소 예약</small><strong>${c.myReservations}</strong></div>
     <div class="kpi-card"><small>경조사</small><strong>${c.myCondolences}</strong></div>
-    <div class="kpi-card"><small>행사 신청</small><strong>${c.eventApps}</strong></div>
+    <div class="kpi-card"><small>이벤트 신청</small><strong>${c.eventApps}</strong></div>
     
   </section>
   ${approvedReservationCards()}
@@ -910,13 +908,13 @@ function submitCondolence(e){
     saveRow("");
   }
 }
-function eventPage(){return layout(`<section class="section"><h2>사내 행사 신청</h2><div class="grid2">${state.events.filter(e=>e.isOpen!==false).map(ev=>{const cnt=state.eventApplications.filter(a=>a.eventId===ev.id&&a.status!=="취소").length;const applied=state.eventApplications.find(a=>a.eventId===ev.id&&a.userId===user().id&&a.status!=="취소");return`<div class="card"><span class="badge">${ev.date}</span><h3>${ev.title}</h3><p class="muted">${ev.memo}</p><p>신청 ${cnt}/${ev.limit}명</p>${applied?`<button class="gray" disabled>신청 완료</button>`:`<button onclick="applyEvent('${ev.id}')">참석 신청</button>`}</div>`}).join("")}</div></section>`);}
-function applyEvent(id){const ev=state.events.find(e=>e.id===id);const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;if(cnt>=ev.limit)return toast("마감되었습니다.");state.eventApplications.push({id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString()});save();toast("행사 신청 완료");render();}
+function eventPage(){return layout(`<section class="section"><h2>사내 이벤트</h2><div class="grid2">${state.events.map(ev=>{const isApply=ev.isOpen!==false;const cnt=state.eventApplications.filter(a=>a.eventId===ev.id&&a.status!=="취소").length;const applied=state.eventApplications.find(a=>a.eventId===ev.id&&a.userId===user().id&&a.status!=="취소");return`<div class="card"><span class="badge">${ev.date}</span><span class="badge">${isApply?"신청":"일반"}</span><h3>${ev.title}</h3><p class="muted">${ev.memo}</p>${isApply?`<p>신청 ${cnt}/${ev.limit}명</p>${applied?`<button class="gray" disabled>신청 완료</button>`:`<button onclick="applyEvent('${ev.id}')">참석 신청</button>`}`:`<p class="muted">일반 안내 이벤트입니다.</p>`}</div>`}).join("")}</div></section>`);}
+function applyEvent(id){const ev=state.events.find(e=>e.id===id);const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;if(cnt>=ev.limit)return toast("마감되었습니다.");state.eventApplications.push({id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString()});save();toast("이벤트 신청 완료");render();}
 
 function discount(){
   ensureDiscountData();
   return layout(`<section class="section"><h2>${pageLabel("discount")}</h2>
-  <p class="muted">제휴 할인과 복지 혜택을 확인하고 신청할 수 있습니다.</p>
+  <p class="muted">현재 할인 혜택 화면은 사용하지 않습니다.</p>
   <div class="grid4">${state.discounts.map(d=>{
     const count=discountApplyCount(d.id);
     const closed=d.applyEnabled && d.limitCount && count>=Number(d.limitCount);
@@ -966,7 +964,7 @@ function applyDiscount(id){
 }
 function discount(){
   return layout(`<section class="section"><h2>${pageLabel("discount")}</h2>
-  <p class="muted">제휴 할인과 복지 혜택을 확인하고, 신청형 항목은 이용하기 버튼으로 접수할 수 있습니다.</p>
+  <p class="muted">현재 할인 혜택 화면은 사용하지 않습니다.</p>
   <div class="grid4">${state.discounts.map(d=>{
     const count=discountApplyCount(d.id);
     const closed=d.applyEnabled && d.limitCount && count>=Number(d.limitCount);
@@ -988,7 +986,7 @@ function submitVacation(e){e.preventDefault();const f=new FormData(e.target);con
 function notice(){return layout(`<section class="section"><h2>공지사항</h2><div class="panel">${state.notices.map(n=>`<div class="notice"><div><b>${n.important?"[중요] ":""}${n.title}</b><p class="muted">${n.body}</p></div><div class="muted">조회 ${n.views}</div></div>`).join("")}</div></section>`);}
 function genericTable(rows,type,admin){
   if(!rows.length)return`<div class="panel empty">신청 내역이 없습니다.</div>`;
-  return`${admin?adminBulkToolbar(type,type==='eventApplications'?'행사 신청 내역':'신청 내역','chkGeneric_'+type):""}<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>구분</th><th>신청자</th><th>일자</th><th>첨부</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows.map(r=>`<tr>${admin?`<td>${rowCheck('chkGeneric_'+type,r.id)}</td>`:""}<td>${r.type||r.title||""}</td><td>${r.userName}<br><span class="muted">${r.dept||""}</span></td><td>${r.date||r.createdAt||""}</td><td>${r.file||"-"}</td><td><span class="status ${r.status}">${r.status}</span></td><td>${admin?commonAdminButtons(type,r.id):"-"}</td></tr>`).join("")}</tbody></table>`;
+  return`${admin?adminBulkToolbar(type,type==='eventApplications'?'이벤트 신청 내역':'신청 내역','chkGeneric_'+type):""}<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>구분</th><th>신청자</th><th>일자</th><th>첨부</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows.map(r=>`<tr>${admin?`<td>${rowCheck('chkGeneric_'+type,r.id)}</td>`:""}<td>${r.type||r.title||""}</td><td>${r.userName}<br><span class="muted">${r.dept||""}</span></td><td>${r.date||r.createdAt||""}</td><td>${r.file||"-"}</td><td><span class="status ${r.status}">${r.status}</span></td><td>${admin?commonAdminButtons(type,r.id):"-"}</td></tr>`).join("")}</tbody></table>`;
 }
 function mypage(){
   const u=user();
@@ -1045,8 +1043,7 @@ function admin(){
     ["homeAdmin","홈/메뉴/로고"],
     ["stayAdmin","숙소 관리"],
     ["condolenceAdmin","경조사 관리"],
-    ["eventAdminGroup","행사 관리"],
-    ["discountAdminGroup","할인 관리"],
+    ["eventAdminGroup","이벤트 관리"],
     ["noticeAdminGroup","공지 관리"],
     ["memberAdmin","회원/관리자"],
     ["auditLog","감사 로그"],
@@ -1059,7 +1056,7 @@ function admin(){
   if(adminTab==="stayAdmin") body=stayAdminGroup();
   if(adminTab==="condolenceAdmin") body=condolenceAdminGroup();
   if(adminTab==="eventAdminGroup") body=eventAdminGroup();
-  if(adminTab==="discountAdminGroup") body=discountAdminGroup();
+  
   if(adminTab==="noticeAdminGroup") body=noticeAdminGroup();
   if(adminTab==="memberAdmin") body=memberAdminGroup();
   if(adminTab==="auditLog") body=auditLogAdmin();
@@ -1086,7 +1083,7 @@ function adminDashboard(){
     <div class="group-section"><div class="subtle-title"><h3>오늘의 운영 요약</h3><span class="muted">복지몰 전체 현황</span></div>
       <div class="grid4">
         <div class="kpi-card"><small>경조사 접수</small><strong>${s.condolenceCount}</strong></div>
-        <div class="kpi-card"><small>행사 신청</small><strong>${s.eventApps}</strong></div>
+        <div class="kpi-card"><small>이벤트 신청</small><strong>${s.eventApps}</strong></div>
         <div class="kpi-card"><small>입금 예정</small><strong>${money(s.payAmount)}</strong></div>
       </div>
     </div>
@@ -1120,7 +1117,7 @@ function homeAdminGroup(){
         <button class="wide">홈 문구 저장</button>
       </form>
     </div>
-    <div class="group-section"><div class="subtle-title"><h3>홈 화면 버튼 관리</h3><span class="muted">예: 숙소 예약하기, 할인 혜택 보기 등</span></div>
+    <div class="group-section"><div class="subtle-title"><h3>홈 화면 버튼 관리</h3><span class="muted">예: 숙소 예약하기, 이벤트 보기 등</span></div>
       <form class="form" onsubmit="addHomeButton(event)">
         <label>버튼명<input name="label" required placeholder="예: 예약하기"></label>
         <label>연결 메뉴<select name="page">${navItems().filter(i=>i.key!=="home").map(i=>`<option value="${i.key}">${i.name}</option>`).join("")}</select></label>
@@ -1135,7 +1132,7 @@ function homeAdminGroup(){
 }
 
 function menuAdminTable(){
-  const keys=["stay","family","event","discount","notice"];
+  const keys=["stay","family","event","notice"];
   return `<table class="table"><thead><tr><th>기능</th><th>탭 명칭</th><th>상태</th><th>관리</th></tr></thead><tbody>${keys.map(k=>{const m=state.menuSettings[k];return`<tr><td>${k}</td><td><input id="mn_${k}" value="${m.name}"></td><td><select id="me_${k}"><option value="true" ${m.enabled?'selected':''}>활성</option><option value="false" ${!m.enabled?'selected':''}>비활성</option></select></td><td><button onclick="updateMenu('${k}')">저장</button></td></tr>`}).join("")}</tbody></table>`;
 }
 
@@ -1294,8 +1291,8 @@ function condolenceAdminGroup(){
 }
 function eventAdminGroup(){
   return `<div class="group-box">
-    <div class="group-section"><div class="subtle-title"><h3>행사 등록 및 수정</h3></div>${eventAdmin()}</div>
-    <div class="group-section"><div class="subtle-title"><h3>행사 신청 현황</h3></div>${genericTable(state.eventApplications,"eventApplications",true)}</div>
+    <div class="group-section"><div class="subtle-title"><h3>이벤트 등록 및 수정</h3></div>${eventAdmin()}</div>
+    <div class="group-section"><div class="subtle-title"><h3>이벤트 신청 현황</h3></div>${genericTable(state.eventApplications,"eventApplications",true)}</div>
   </div>`;
 }
 
@@ -1468,10 +1465,10 @@ function addCondolenceType(e){e.preventDefault();const f=new FormData(e.target);
 function updateCondolenceType(id){const t=state.condolenceTypes.find(x=>x.id===id);const name=document.getElementById("ctn_"+id).value.trim();if(!name)return toast("구분명을 입력해 주세요.");if(state.condolenceTypes.some(x=>x.id!==id&&x.name===name))return toast("이미 등록된 구분입니다.");t.name=name;t.description=document.getElementById("ctd_"+id).value;save();toast("수정 완료");render();}
 function deleteCondolenceType(id){const t=state.condolenceTypes.find(x=>x.id===id);if(state.condolences.some(c=>c.type===t.name))return toast("접수 이력이 있는 구분은 삭제할 수 없습니다.");if(!confirm("삭제할까요?"))return;state.condolenceTypes=state.condolenceTypes.filter(x=>x.id!==id);save();toast("삭제 완료");render();}
 
-function eventAdmin(){return`<div class="panel"><h3>행사 추가</h3><form class="form" onsubmit="addEvent(event)"><label>행사명<input name="title" required></label><label>행사일<input type="date" name="date" required></label><label>신청 제한 인원<input type="number" name="limit" value="30" required></label><label>노출 여부<select name="isOpen"><option value="true">노출</option><option value="false">숨김</option></select></label><label class="wide">안내 내용<textarea name="memo"></textarea></label><button class="wide">행사 추가</button></form></div><section class="section"><h2>행사 목록</h2><table class="table"><thead><tr><th>행사명</th><th>일자</th><th>제한</th><th>노출</th><th>내용</th><th>관리</th></tr></thead><tbody>${state.events.map(e=>`<tr><td><input id="et_${e.id}" value="${e.title}"></td><td><input id="ed_${e.id}" type="date" value="${e.date}"></td><td><input id="el_${e.id}" type="number" value="${e.limit}"></td><td><select id="eo_${e.id}"><option value="true" ${e.isOpen!==false?'selected':''}>노출</option><option value="false" ${e.isOpen===false?'selected':''}>숨김</option></select></td><td><input id="em_${e.id}" value="${e.memo||''}"></td><td class="actions"><button onclick="updateEvent('${e.id}')">수정</button><button class="danger" onclick="deleteEvent('${e.id}')">삭제</button></td></tr>`).join("")}</tbody></table></section>`;}
-function addEvent(e){e.preventDefault();const f=new FormData(e.target);state.events.push({id:uid(),title:f.get("title"),date:f.get("date"),limit:Number(f.get("limit")),memo:f.get("memo")||"",isOpen:f.get("isOpen")==="true"});save();toast("행사 추가");render();}
-function updateEvent(id){const e=state.events.find(x=>x.id===id);e.title=document.getElementById("et_"+id).value;e.date=document.getElementById("ed_"+id).value;e.limit=Number(document.getElementById("el_"+id).value);e.isOpen=document.getElementById("eo_"+id).value==="true";e.memo=document.getElementById("em_"+id).value;save();toast("행사 수정");render();}
-function deleteEvent(id){if(state.eventApplications.some(a=>a.eventId===id))return toast("신청 이력이 있는 행사는 삭제할 수 없습니다. 숨김 처리해 주세요.");if(!confirm("삭제할까요?"))return;state.events=state.events.filter(e=>e.id!==id);save();toast("삭제 완료");render();}
+function eventAdmin(){return`<div class="panel"><h3>이벤트 추가</h3><form class="form" onsubmit="addEvent(event)"><label>이벤트명<input name="title" required></label><label>이벤트일<input type="date" name="date" required></label><label>신청 제한 인원<input type="number" name="limit" value="30" required></label><label>구분<select name="isOpen"><option value="true">신청</option><option value="false">일반</option></select></label><label class="wide">안내 내용<textarea name="memo"></textarea></label><button class="wide">이벤트 추가</button></form></div><section class="section"><h2>이벤트 목록</h2><table class="table"><thead><tr><th>이벤트명</th><th>일자</th><th>제한</th><th>구분</th><th>내용</th><th>관리</th></tr></thead><tbody>${state.events.map(e=>`<tr><td><input id="et_${e.id}" value="${e.title}"></td><td><input id="ed_${e.id}" type="date" value="${e.date}"></td><td><input id="el_${e.id}" type="number" value="${e.limit}"></td><td><select id="eo_${e.id}"><option value="true" ${e.isOpen!==false?'selected':''}>신청</option><option value="false" ${e.isOpen===false?'selected':''}>일반</option></select></td><td><input id="em_${e.id}" value="${e.memo||''}"></td><td class="actions"><button onclick="updateEvent('${e.id}')">수정</button><button class="danger" onclick="deleteEvent('${e.id}')">삭제</button></td></tr>`).join("")}</tbody></table></section>`;}
+function addEvent(e){e.preventDefault();const f=new FormData(e.target);state.events.push({id:uid(),title:f.get("title"),date:f.get("date"),limit:Number(f.get("limit")),memo:f.get("memo")||"",isOpen:f.get("isOpen")==="true"});save();toast("이벤트 추가");render();}
+function updateEvent(id){const e=state.events.find(x=>x.id===id);e.title=document.getElementById("et_"+id).value;e.date=document.getElementById("ed_"+id).value;e.limit=Number(document.getElementById("el_"+id).value);e.isOpen=document.getElementById("eo_"+id).value==="true";e.memo=document.getElementById("em_"+id).value;save();toast("이벤트 수정");render();}
+function deleteEvent(id){if(state.eventApplications.some(a=>a.eventId===id))return toast("신청 이력이 있는 이벤트는 삭제할 수 없습니다. 일반으로 변경해 주세요.");if(!confirm("삭제할까요?"))return;state.events=state.events.filter(e=>e.id!==id);save();toast("삭제 완료");render();}
 
 function discountAdmin(embedded=false){
   return`<div class="panel"><h3>할인 항목 추가</h3>
@@ -1654,6 +1651,6 @@ function discountAdminGroup(){
   </div>`;
 }
 function render(){
-  finalHotfixCleanState();if(!session)return loginView();if(!user()){logout();return;}if(!ensureEnabledPage(page)){page="home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount")app.innerHTML=discount();if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
+  finalHotfixCleanState();if(!session)return loginView();if(!user()){logout();return;}if(!ensureEnabledPage(page)){page="home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount"){page="home";app.innerHTML=home();}if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
 render();
 initCloudSync();
