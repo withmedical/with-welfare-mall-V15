@@ -195,3 +195,13 @@ button{min-height:42px}
   .mobile-more-sheet>button{width:100%!important;text-align:left!important;background:#f6f8fb!important;color:#172033!important}
   .mobile-more-sheet>button.danger{background:#d92d20!important;color:#fff!important}
 }
+
+
+/* V16.4 condolence approval/print */
+.접수{background:#fff7e6;color:#b54708}
+.승인{background:#e7f8ee;color:#087443}
+.반려{background:#fde8e7;color:#b42318}
+.지급완료{background:#eef3ff;color:#2357d9}
+@media print{
+  body.printing *{visibility:hidden}
+}
