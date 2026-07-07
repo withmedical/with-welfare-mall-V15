@@ -260,3 +260,12 @@ button{min-height:42px}
   .event-admin-table .actions{justify-content:flex-start;flex-wrap:nowrap}
   .event-admin-table .actions button{min-width:48px;padding:8px 12px}
 }
+
+/* V18 숙소 예약 캘린더 구분 표시 */
+.calendar-legend{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 12px;color:#667085;font-size:13px;font-weight:800}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.legend-dot.emp{background:#2357d9}.legend-dot.manual{background:#7c3aed}.legend-dot.external{background:#f97316}.legend-dot.block{background:#64748b}
+.mark.employeeM{background:#eaf1ff;color:#2357d9}
+.mark.manualM{background:#f1e8ff;color:#6d28d9}
+.mark.externalM{background:#fff2d6;color:#b54708}
+.mark.blockM{background:#eef2f7;color:#475467}
