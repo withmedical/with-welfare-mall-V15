@@ -236,7 +236,7 @@ button{min-height:42px}
 
 /* V17 request-only UI width tuning */
 @media(min-width:981px){
-  .benefit-item-table{table-layout:fixed;min-width:1120px}
+  .benefit-item-table{table-layout:fixed;min-width:800px}
   .benefit-item-table .c-cat{width:9%}
   .benefit-item-table .c-name{width:14%}
   .benefit-item-table .c-desc{width:18%}
@@ -249,7 +249,7 @@ button{min-height:42px}
   .benefit-item-table .actions{justify-content:flex-start;flex-wrap:nowrap}
   .benefit-item-table .actions button{min-width:58px;padding:8px 10px}
 
-  .event-admin-table{table-layout:fixed;min-width:980px}
+  .event-admin-table{table-layout:fixed;min-width:800px}
   .event-admin-table .e-title{width:22%}
   .event-admin-table .e-date{width:14%}
   .event-admin-table .e-limit{width:8%}
