@@ -47,7 +47,7 @@ const seed={
   ],
   rooms:[
     {id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션"},
-    {id:"solar", name:"솔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션"}
+    {id:"solar", name:"솔레동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션"}
   ],
   reservations:[],
   condolences:[],
@@ -64,7 +64,7 @@ const seed={
   ],
   vacationSupport:[],
   notices:[
-    {id:"n1",title:"제주 사계펜션 예약 운영 안내",important:true,body:"스텔라동, 솔라동은 각각 기본 5인 기준입니다. 직원당 연간 10박 기준으로 운영합니다.",views:0},
+    {id:"n1",title:"제주 사계펜션 예약 운영 안내",important:true,body:"스텔라동, 솔레동은 각각 기본 5인 기준입니다. 직원당 연간 10박 기준으로 운영합니다.",views:0},
     {id:"n2",title:"지인 이용 시 50% 할인 금액 입금 안내",important:true,body:"지인 이용은 1박 270,000원 기준 50% 할인 금액을 회사 지정 계좌로 이체합니다.",views:0}
   ],
   mailOutbox:[]
@@ -198,7 +198,7 @@ function v16DedupeState(){
   });
   if(!state.rooms) state.rooms=[];
   state.rooms=state.rooms.map(r=>{
-    if(r.name==="솔레동") r.name="솔라동";
+    if(r.name==="솔레동") r.name="솔레동";
     return r;
   });
   const roomByName={};
@@ -207,8 +207,8 @@ function v16DedupeState(){
   });
   state.rooms=Object.values(roomByName);
   if(!state.rooms.find(r=>r.name==="스텔라동")) state.rooms.push({id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
-  if(!state.rooms.find(r=>r.name==="솔라동")) state.rooms.push({id:"solar", name:"솔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
-  state.rooms=state.rooms.filter(r=>r.name==="스텔라동"||r.name==="솔라동");
+  if(!state.rooms.find(r=>r.name==="솔레동")) state.rooms.push({id:"solar", name:"솔레동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
+  state.rooms=state.rooms.filter(r=>r.name==="스텔라동"||r.name==="솔레동");
   state.rooms.forEach(r=>{
     if(!r.photos) r.photos=[];
     if(!r.basePeople) r.basePeople=5;
@@ -747,7 +747,7 @@ function roomPhotoBlock(room){
     ? `<div class="room-photo"><img src="${photo}" alt="${room.name}"></div>`
     : `<div class="room-img ${room.id}">${room.name}</div>`;
 }
-function stay(){const u=user();const used=u.role==="admin"?0:annualUsedNights(u.id);return layout(`<section class="section"><h2>제주 사계펜션 숙소 예약</h2><p class="muted">스텔라동 / 솔라동 2개 동 운영 · 각 동 기본 5명 · 추가 인원 입력 가능 · 직원당 연간 ${state.settings.annualNightLimit}박 기준</p><div class="grid2">${state.rooms.map(r=>`<div class="card room-card">${roomPhotoBlock(r)}<div class="room-body"><h3>${r.name}</h3><p class="muted">기본 ${r.basePeople}명 · 최대 ${r.maxPeople}명</p><button onclick="showReserve('${r.id}')">예약 신청</button></div></div>`).join("")}</div></section><section class="section panel"><div class="cal-head"><h2>예약 현황 캘린더</h2><div><button class="secondary" onclick="moveMonth(-1)">이전</button> <b>${calDate.getFullYear()}년 ${calDate.getMonth()+1}월</b> <button class="secondary" onclick="moveMonth(1)">다음</button></div></div>${calendar()}</section><section id="reserveForm" class="section"></section><section class="section"><h2>내 예약 현황</h2><p class="muted">올해 사용/신청 박수: ${used}박 / ${state.settings.annualNightLimit}박</p>${reservationTable(state.reservations.filter(r=>r.userId===u.id),false)}</section>`);}
+function stay(){const u=user();const used=u.role==="admin"?0:annualUsedNights(u.id);return layout(`<section class="section"><h2>제주 사계펜션 숙소 예약</h2><p class="muted">스텔라동 / 솔레동 2개 동 운영 · 각 동 기본 5명 · 추가 인원 입력 가능 · 직원당 연간 ${state.settings.annualNightLimit}박 기준</p><div class="grid2">${state.rooms.map(r=>`<div class="card room-card">${roomPhotoBlock(r)}<div class="room-body"><h3>${r.name}</h3><p class="muted">기본 ${r.basePeople}명 · 최대 ${r.maxPeople}명</p><button onclick="showReserve('${r.id}')">예약 신청</button></div></div>`).join("")}</div></section><section class="section panel"><div class="cal-head"><h2>예약 현황 캘린더</h2><div><button class="secondary" onclick="moveMonth(-1)">이전</button> <b>${calDate.getFullYear()}년 ${calDate.getMonth()+1}월</b> <button class="secondary" onclick="moveMonth(1)">다음</button></div></div>${calendar()}</section><section id="reserveForm" class="section"></section><section class="section"><h2>내 예약 현황</h2><p class="muted">올해 사용/신청 박수: ${used}박 / ${state.settings.annualNightLimit}박</p>${reservationTable(state.reservations.filter(r=>r.userId===u.id),false)}</section>`);}
 function moveMonth(n){calDate.setMonth(calDate.getMonth()+n);render();}
 function calendar(){const y=calDate.getFullYear(),m=calDate.getMonth();const start=new Date(y,m,1-new Date(y,m,1).getDay());let html=`<div class="calendar">${["일","월","화","수","목","금","토"].map(d=>`<div class="dow">${d}</div>`).join("")}`;for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=d.toISOString().slice(0,10);const out=d.getMonth()!==m;const marks=[];state.reservations.filter(r=>r.status!=="취소"&&r.status!=="반려"&&ds>=r.checkin&&ds<r.checkout).forEach(r=>marks.push(`<span class="mark ${r.roomId}M">${r.roomName} X</span>`));
 (state.roomBlocks||[]).filter(b=>ds>=b.start&&ds<b.end).forEach(b=>{const rr=state.rooms.find(x=>x.id===b.roomId);marks.push(`<span class="mark ${b.roomId}M">${rr?rr.name:"숙소"} 차단</span>`);});
