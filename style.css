@@ -249,14 +249,14 @@ button{min-height:42px}
   .benefit-item-table .actions{justify-content:flex-start;flex-wrap:nowrap}
   .benefit-item-table .actions button{min-width:58px;padding:8px 10px}
 
-  .event-admin-table{table-layout:fixed;min-width:980px}
-  .event-admin-table .e-title{width:21%}
+  .event-admin-table{table-layout:fixed;width:100%;min-width:0;}
+  .event-admin-table .e-title{width:22%}
   .event-admin-table .e-date{width:14%}
-  .event-admin-table .e-limit{width:9%}
+  .event-admin-table .e-limit{width:8%}
   .event-admin-table .e-kind{width:10%}
-  .event-admin-table .e-memo{width:31%}
-  .event-admin-table .e-actions{width:15%}
+  .event-admin-table .e-memo{width:33%}
+  .event-admin-table .e-actions{width:13%}
   .event-admin-table input,.event-admin-table select{width:100%;max-width:none!important;padding:8px;font-size:13px}
   .event-admin-table .actions{justify-content:flex-start;flex-wrap:nowrap}
-  .event-admin-table .actions button{min-width:58px;padding:8px 10px}
+  .event-admin-table .actions button{min-width:48px;padding:8px 12px}
 }
