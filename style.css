@@ -233,3 +233,30 @@ button{min-height:42px}
 
 /* Discount force fix */
 .group-section .table input,.group-section .table select{max-width:180px}
+
+/* V17 request-only UI width tuning */
+@media(min-width:981px){
+  .benefit-item-table{table-layout:fixed;min-width:1120px}
+  .benefit-item-table .c-cat{width:9%}
+  .benefit-item-table .c-name{width:14%}
+  .benefit-item-table .c-desc{width:18%}
+  .benefit-item-table .c-amount{width:11%}
+  .benefit-item-table .c-leave{width:8%}
+  .benefit-item-table .c-flower{width:8%}
+  .benefit-item-table .c-docs{width:19%}
+  .benefit-item-table .c-actions{width:13%}
+  .benefit-item-table input,.benefit-item-table select{width:100%;max-width:none!important;padding:8px;font-size:13px}
+  .benefit-item-table .actions{justify-content:flex-start;flex-wrap:nowrap}
+  .benefit-item-table .actions button{min-width:58px;padding:8px 10px}
+
+  .event-admin-table{table-layout:fixed;min-width:980px}
+  .event-admin-table .e-title{width:21%}
+  .event-admin-table .e-date{width:14%}
+  .event-admin-table .e-limit{width:9%}
+  .event-admin-table .e-kind{width:10%}
+  .event-admin-table .e-memo{width:31%}
+  .event-admin-table .e-actions{width:15%}
+  .event-admin-table input,.event-admin-table select{width:100%;max-width:none!important;padding:8px;font-size:13px}
+  .event-admin-table .actions{justify-content:flex-start;flex-wrap:nowrap}
+  .event-admin-table .actions button{min-width:58px;padding:8px 10px}
+}
