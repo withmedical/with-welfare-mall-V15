@@ -110,12 +110,12 @@ function migrate(){
   if(!state.settings.logoUrl){state.settings.logoUrl="logo.gif"; changed=true;}
   if(!state.settings.homeBadge){state.settings.homeBadge="Company Welfare Platform"; changed=true;}
   if(!state.settings.homeTitle){state.settings.homeTitle="회원 승인형 회사 복지몰"; changed=true;}
-  if(!state.settings.homeDescription){state.settings.homeDescription="임직원을 위한 숙소 예약, 경조사, 이벤트 복지 서비스를 한곳에서 이용할 수 있습니다."; changed=true;}
+  if(!state.settings.homeDescription){state.settings.homeDescription="임직원을 위한 숙소 예약, 복지신청, 이벤트 서비스를 한곳에서 이용할 수 있습니다."; changed=true;}
   if(!state.settings.homeButtons){state.settings.homeButtons=[{id:"hb1",label:"숙소 예약하기",page:"stay"},{id:"hb2",label:"이벤트 보기",page:"event"}]; changed=true;}
   if(!state.menuSettings){
     state.menuSettings={
       stay:{name:"숙소예약",enabled:true},
-      family:{name:"경조사",enabled:true},
+      family:{name:"복지신청",enabled:true},
       event:{name:"이벤트",enabled:true},
       discount:{name:"할인",enabled:false},
       notice:{name:"공지",enabled:true}
@@ -128,11 +128,34 @@ function migrate(){
   
   if(state.condolenceTypes){
     state.condolenceTypes=state.condolenceTypes.map(t=>{
-      if(typeof t==="string") return {id:uid(),name:t,amount:0};
-      return {...t, amount:Number(t.amount||0)};
+      if(typeof t==="string") return {id:uid(),category:"경조금",name:t,amount:0,description:"",leaveDays:"",flower:"",docs:""};
+      return {...t, category:t.category||"경조금", amount:Number(t.amount||0), leaveDays:t.leaveDays||"", flower:t.flower||"", docs:t.docs||""};
     });
-    const defaultAmounts={"결혼":300000,"출산":300000,"장례":500000,"생일":0,"기타":0};
+    const defaultAmounts={"결혼":300000,"출산":500000,"장례":300000,"생일":0,"기타":0};
     state.condolenceTypes.forEach(t=>{if(!t.amount && defaultAmounts[t.name]) t.amount=defaultAmounts[t.name];});
+    state.condolenceTypes.forEach(t=>{
+      if(t.name==="결혼"){t.category="축의금";t.name="본인 결혼";t.description="본인 결혼";t.amount=500000;t.leaveDays="5일";t.flower="○";t.docs="청첩장";}
+      if(t.name==="출산"){t.category="출산";t.name="본인/배우자 출산";t.description="본인 또는 배우자 출산";t.amount=500000;t.leaveDays="법정기간";t.docs="주민등록등본";}
+      if(t.name==="장례"){t.category="조의금";t.name="부모 별세(배우자 포함)";t.description="부모 별세";t.amount=500000;t.leaveDays="5일";t.flower="○";t.docs="부고장";}
+    });
+    const ensureBenefit=(category,name,description,amount,leaveDays,flower,docs)=>{if(!state.condolenceTypes.some(t=>t.name===name)){state.condolenceTypes.push({id:uid(),category,name,description,amount,leaveDays,flower,docs}); changed=true;}};
+    ensureBenefit("축의금","자녀 결혼","자녀 결혼",300000,"","○","청첩장");
+    ensureBenefit("축의금","형제자매 결혼(배우자 포함)","형제자매 결혼",300000,"","","청첩장");
+    ensureBenefit("회갑/칠순/팔순/구순","부모 회갑/칠순/팔순/구순(배우자 포함)","부모 회갑, 칠순, 팔순, 구순",300000,"","","가족관계증명원");
+    ensureBenefit("돌","자녀 돌","자녀 돌",300000,"","","주민등록등본");
+    ensureBenefit("대학장학금","대학장학금","모든 자녀, 전학년 지원(동시 2명 한정)",2000000,"","","입학증명서, 가족관계증명원, 납입증명서");
+    ensureBenefit("입학축하금","입학축하금","초, 중, 고 자녀당 각 1회",100000,"","","가족관계증명원");
+    ensureBenefit("문화지원금","문화지원금(기혼)","도서, 영화, OTT, 공연, 기타",40000,"","","청구 영수증");
+    ensureBenefit("문화지원금","문화지원금(미혼)","도서, 영화, OTT, 공연, 기타",20000,"","","청구 영수증");
+    ensureBenefit("가족건강검진","가족건강검진","국가검진 다음 해부터 2년 주기(부부 한정)",0,"","","신청서 작성");
+    ensureBenefit("조의금","본인 사망","본인",1000000,"","○","부고장, 유가족에게 지급");
+    ensureBenefit("조의금","배우자 사망","배우자",1000000,"5일","○","부고장");
+    ensureBenefit("조의금","자녀 사망","자녀",500000,"5일","○","부고장");
+    ensureBenefit("조의금","조부모 사망(배우자 포함)","조부모",300000,"3일","○","부고장");
+    ensureBenefit("조의금","외조부모 사망(배우자 포함)","외조부모",300000,"3일","○","부고장");
+    ensureBenefit("조의금","형제자매 사망(배우자 포함)","형제자매",300000,"3일","○","부고장");
+    ensureBenefit("조의금","백숙부모 사망(외가 포함)","백숙부모",0,"2일","","부고장");
+    ensureBenefit("조의금","고모/이모 사망","고모/이모",0,"2일","","부고장");
   }
   if(state.condolences){
     state.condolences=state.condolences.map(c=>({
@@ -191,7 +214,7 @@ function v16DedupeState(){
   if(!state.menuSettings){
     state.menuSettings={
       stay:{name:"숙소예약",enabled:true},
-      family:{name:"경조사",enabled:true},
+      family:{name:"복지신청",enabled:true},
       event:{name:"이벤트",enabled:true},
       discount:{name:"할인",enabled:false},
       notice:{name:"공지",enabled:true}
@@ -330,7 +353,7 @@ function finalHotfixCleanState(){
     }
   }
   if(state.settings && state.settings.homeDescription && String(state.settings.homeDescription).includes("휴가지원사업")){
-    state.settings.homeDescription="임직원을 위한 숙소 예약, 경조사, 이벤트 복지 서비스를 한곳에서 이용할 수 있습니다.";
+    state.settings.homeDescription="임직원을 위한 숙소 예약, 복지신청, 이벤트 서비스를 한곳에서 이용할 수 있습니다.";
   }
   if(state.mailOutbox){
     state.mailOutbox=[];
@@ -463,7 +486,7 @@ function mobileBottomNav(){
   <nav class="mobile-bottom-nav">
     <button class="${page==='home'?'active':''}" onclick="goMobile('home')"><span>⌂</span><small>홈</small></button>
     <button class="${page==='stay'?'active':''}" onclick="goMobile('stay')"><span>🏡</span><small>숙소</small></button>
-    <button class="${page==='family'?'active':''}" onclick="goMobile('family')"><span>🎁</span><small>경조사</small></button>
+    <button class="${page==='family'?'active':''}" onclick="goMobile('family')"><span>🎁</span><small>복지신청</small></button>
     <button class="${page==='event'?'active':''}" onclick="goMobile('event')"><span>🎉</span><small>이벤트</small></button>
     <button onclick="toggleMobileMore()"><span>☰</span><small>더보기</small></button>
   </nav>`;
@@ -507,7 +530,7 @@ function calcBaseBySeason(checkin,checkout){return dateList(checkin,checkout).re
 
 function condolenceTable(rows,admin){
   if(!rows.length) return `<div class="panel empty">신청 내역이 없습니다.</div>`;
-  return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>신청자</th><th>구분/일자</th><th>내용/대상</th><th>금액</th><th>상태</th><th>증빙</th><th>승인/출력 관리</th></tr></thead><tbody>
+  return `<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>신청자</th><th>신청구분/일자</th><th>내용/대상</th><th>금액</th><th>상태</th><th>증빙</th><th>승인/출력 관리</th></tr></thead><tbody>
   ${rows.map(c=>`<tr>
     ${admin?`<td>${rowCheck('chkCondolence',c.id)}</td>`:""}
     <td>${c.userName||""}<br><span class="muted">${c.dept||""} / ${c.position||""}<br>${c.contact||""}</span></td>
@@ -523,7 +546,7 @@ function condolenceTable(rows,admin){
 function adminDataCleanupPanel(){
   const items=[
     {key:"reservations",label:"숙소 예약 내역",count:(state.reservations||[]).length},
-    {key:"condolences",label:"경조사 접수 내역",count:(state.condolences||[]).length},
+    {key:"condolences",label:"복지신청 접수 내역",count:(state.condolences||[]).length},
     {key:"eventApplications",label:"이벤트 신청 내역",count:(state.eventApplications||state.eventApps||[]).length, alt: state.eventApplications?"eventApplications":"eventApps"},
     {key:"discountApplications",label:"할인 신청 내역",count:(state.discountApplications||[]).length},
     {key:"auditLogs",label:"감사 로그",count:(state.auditLogs||[]).length}
@@ -680,7 +703,7 @@ function home(){
   const buttons=(state.settings.homeButtons||[]).filter(b=>b.label&&b.page&&ensureEnabledPage(b.page)).map((b,i)=>`<button class="${i===0?'':'secondary'}" onclick="setPage('${b.page}')">${b.label}</button>`).join(" ");
   const featureItems=[
     ["stay","🏡",pageLabel("stay"),"제주 사계펜션 예약 및 사용 현황"],
-    ["family","🎁",pageLabel("family"),"경조사 신청 및 접수 내역"],
+    ["family","🎁",pageLabel("family"),"복지신청 및 접수 내역"],
     ["event","🎉",pageLabel("event"),"사내 이벤트 참여 신청"],
 
     ["notice","📢",pageLabel("notice"),"복지몰 공지 확인"]
@@ -700,7 +723,7 @@ function home(){
   </section>
   <section class="kpi-row">
     <div class="kpi-card"><small>숙소 예약</small><strong>${c.myReservations}</strong></div>
-    <div class="kpi-card"><small>경조사</small><strong>${c.myCondolences}</strong></div>
+    <div class="kpi-card"><small>복지신청</small><strong>${c.myCondolences}</strong></div>
     <div class="kpi-card"><small>이벤트 신청</small><strong>${c.eventApps}</strong></div>
     
   </section>
@@ -785,13 +808,24 @@ function condolenceAmountByType(type){
 }
 function updateCondolenceAmountPreview(sel){
   const form=sel.form;
+  const t=benefitTypeByName(sel.value);
   const amount=condolenceAmountByType(sel.value);
   if(form && form.amount) form.amount.value=amount;
   const target=document.getElementById("condolenceAmountPreview");
   if(target) target.innerText=money(amount);
+  const docs=document.getElementById("benefitDocsPreview");
+  if(docs) docs.innerText=benefitTypeDocs(t)||"항목별 증빙자료를 첨부해 주세요.";
+  const leave=document.getElementById("benefitMetaPreview");
+  if(leave) leave.innerText=[benefitTypeLeave(t)?`휴가 ${benefitTypeLeave(t)}`:"", benefitTypeFlower(t)?`화환/조화 ${benefitTypeFlower(t)}`:""].filter(Boolean).join(" · ")||"해당 없음";
 }
 function typeName(t){return typeof t==="string"?t:t.name;}
 function typeAmount(t){return Number(typeof t==="string"?0:(t.amount||0));}
+function benefitTypeCategory(t){return typeof t==="string"?"경조금":(t.category||"경조금");}
+function benefitTypeDocs(t){return typeof t==="string"?"":(t.docs||"");}
+function benefitTypeLeave(t){return typeof t==="string"?"":(t.leaveDays||"");}
+function benefitTypeFlower(t){return typeof t==="string"?"":(t.flower||"");}
+function benefitTypeByName(name){return (state.condolenceTypes||[]).find(x=>typeName(x)===name);}
+function benefitTypeLabel(t){const c=benefitTypeCategory(t); return `${c} / ${typeName(t)}`;}
 function attachmentPreviewLink(url){
   if(!url) return "-";
   return `<button class="secondary" onclick="openAttachment('${url}')">증빙자료 보기/출력</button>`;
@@ -810,7 +844,7 @@ function printCondolenceForm(id){
   const printDate=new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"}).replace(/\. /g,"년 ").replace(".","일");
   const w=window.open("", "_blank");
   if(!w) return toast("팝업 차단을 해제해 주세요.");
-  const html=`<!doctype html><html><head><meta charset="utf-8"><title>경조금 지급 신청서</title>
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>복지지원금 지급 신청서</title>
   <style>
     @page{size:A4;margin:14mm}
     body{font-family:"Malgun Gothic",Arial,sans-serif;margin:0;color:#000;background:#fff}
@@ -829,13 +863,13 @@ function printCondolenceForm(id){
     @media print{.printbar{display:none}.page{margin:0 auto}}
   </style></head><body><div class="printbar"><button onclick="window.print()">A4 출력 / PDF 저장</button></div>
   <div class="page">
-    <div class="head"><h1>경조금 지급 신청서</h1><table class="approval"><tr><th>신청자</th><th>경영총괄</th></tr><tr><td>${c.userName||""}</td><td></td></tr></table></div>
+    <div class="head"><h1>복지지원금 지급 신청서</h1><table class="approval"><tr><th>신청자</th><th>경영총괄</th></tr><tr><td>${c.userName||""}</td><td></td></tr></table></div>
     <h2>1. 인적사항</h2>
     <table class="form"><tr><th>성 명</th><td>${c.userName||""}</td><th>소 속</th><td>${c.dept||""}</td></tr><tr><th>직 위</th><td>${c.position||""}</td><th>연락처</th><td>${c.contact||""}</td></tr></table>
-    <h2>2. 경조사항</h2>
-    <table class="form"><tr><th>신청구분</th><td colspan="3" class="center">${c.type||""}</td></tr><tr><th>경조내용</th><td>${c.condolenceContent||""}</td><th>신청금액</th><td>${money(c.amount||0)}</td></tr><tr><th>경조일자</th><td colspan="3" class="center">${c.eventDate||c.date||""}</td></tr><tr><th>경조대상자</th><td colspan="3">- 생년월일 : ${c.targetBirth||""}<br>- 성명 : ${c.targetName||""}<br>- 신청인과의 관계 : ${c.targetRelation||""}</td></tr></table>
-    <div class="note">* 근조화환 여부는 경조금 지급 기준을 따른다.<br>* 증빙자료는 별도 첨부파일을 확인한다.</div>
-    <div class="request">상기의 내용으로 경조금의 지급을 신청합니다.</div>
+    <h2>2. 신청사항</h2>
+    <table class="form"><tr><th>신청구분</th><td colspan="3" class="center">${c.type||""}</td></tr><tr><th>신청내용</th><td>${c.condolenceContent||""}</td><th>신청금액</th><td>${money(c.amount||0)}</td></tr><tr><th>발생/이용일자</th><td colspan="3" class="center">${c.eventDate||c.date||""}</td></tr><tr><th>대상자</th><td colspan="3">- 생년월일 : ${c.targetBirth||""}<br>- 성명 : ${c.targetName||""}<br>- 신청인과의 관계 : ${c.targetRelation||""}</td></tr></table>
+    <div class="note">* 지급 기준, 휴가, 화환/조화, 제출서류는 회사 복지 지급 기준을 따른다.<br>* 증빙자료는 별도 첨부파일을 확인한다.</div>
+    <div class="request">상기의 내용으로 복지지원금의 지급을 신청합니다.</div>
     <div class="date">${printDate}</div>
     <div class="sign">신청자 : ${c.userName||""}</div>
   </div></body></html>`;
@@ -844,28 +878,31 @@ function printCondolenceForm(id){
 function family(){
   const u=user();
   const types=(state.condolenceTypes||[]);
-  const firstType=types.length?typeName(types[0]):"기타";
+  const first=types.length?types[0]:{name:"기타",amount:0,docs:""};
+  const firstType=typeName(first);
   return layout(`<section class="section"><h2>${pageLabel("family")}</h2>
   <div class="panel">
-    <h3>경조금 지급 신청</h3>
+    <h3>복지지원금 신청</h3>
+    <p class="muted">경조금, 문화지원금, 장학금, 입학축하금, 건강검진 등 회사 복지 지급 기준에 따라 신청합니다.</p>
     <form class="form" onsubmit="submitCondolence(event)">
       <label>성명<input name="userName" value="${u.name}" readonly></label>
       <label>소속<input name="dept" value="${u.dept||""}" readonly></label>
       <label>직위<input name="position" placeholder="예: 사원, 대리, 과장, 전무" required></label>
       <label>연락처<input name="contact" value="${u.phone||""}" required></label>
-      <label>신청구분<select name="type" onchange="updateCondolenceAmountPreview(this)">${types.map(t=>`<option value="${typeName(t)}">${typeName(t)}</option>`).join("")}</select></label>
+      <label>신청구분<select name="type" onchange="updateCondolenceAmountPreview(this)">${types.map(t=>`<option value="${typeName(t)}">${benefitTypeLabel(t)}</option>`).join("")}</select></label>
       <label>신청금액<input name="amount" type="number" value="${condolenceAmountByType(firstType)}" readonly></label>
-      <label class="wide">경조내용<input name="condolenceContent" placeholder="예: 본인 결혼, 부친상, 자녀 출산 등" required></label>
-      <label>경조일자<input type="date" name="eventDate" required></label>
-      <label>경조대상자 성명<input name="targetName" required></label>
-      <label>경조대상자 생년월일<input type="date" name="targetBirth"></label>
+      <label class="wide">신청내용<input name="condolenceContent" placeholder="예: 본인 결혼, 도서 구입, 자녀 입학, 건강검진 등" required></label>
+      <label>발생/이용일자<input type="date" name="eventDate" required></label>
+      <label>대상자 성명<input name="targetName" placeholder="본인 또는 대상자 성명" required></label>
+      <label>대상자 생년월일<input type="date" name="targetBirth"></label>
       <label class="wide">신청인과의 관계<input name="targetRelation" placeholder="예: 본인, 배우자, 부, 모, 자녀 등" required></label>
       <label class="wide">증빙자료 첨부 PDF/이미지<input type="file" name="file" accept=".pdf,image/*"></label>
-      <p class="wide muted">예상 신청금액: <b id="condolenceAmountPreview">${money(condolenceAmountByType(firstType))}</b> · 증빙자료는 관리자 승인 후 별도 보기/출력 가능합니다.</p>
-      <button class="wide">경조사 신청</button>
+      <p class="wide muted">예상 신청금액: <b id="condolenceAmountPreview">${money(condolenceAmountByType(firstType))}</b> · 제출서류: <b id="benefitDocsPreview">${benefitTypeDocs(first)||"항목별 증빙자료를 첨부해 주세요."}</b></p>
+      <p class="wide muted">추가 기준: <b id="benefitMetaPreview">${[benefitTypeLeave(first)?`휴가 ${benefitTypeLeave(first)}`:"", benefitTypeFlower(first)?`화환/조화 ${benefitTypeFlower(first)}`:""].filter(Boolean).join(" · ")||"해당 없음"}</b></p>
+      <button class="wide">복지지원금 신청</button>
     </form>
   </div>
-  <section class="section"><h2>내 경조사 신청 이력</h2>${condolenceTable(state.condolences.filter(c=>c.userId===u.id),false)}</section>
+  <section class="section"><h2>내 복지신청 이력</h2>${condolenceTable(state.condolences.filter(c=>c.userId===u.id),false)}</section>
   </section>`);
 }
 
@@ -897,7 +934,7 @@ function submitCondolence(e){
       createdAt:new Date().toLocaleString()
     });
     save();
-    toast("경조사 신청이 접수되었습니다.");
+    toast("복지신청이 접수되었습니다.");
     render();
   };
   if(file){
@@ -1042,7 +1079,7 @@ function admin(){
     ["adminDashboard","대시보드"],
     ["homeAdmin","홈/메뉴/로고"],
     ["stayAdmin","숙소 관리"],
-    ["condolenceAdmin","경조사 관리"],
+    ["condolenceAdmin","복지신청 관리"],
     ["eventAdminGroup","이벤트 관리"],
     ["noticeAdminGroup","공지 관리"],
     ["memberAdmin","회원/관리자"],
@@ -1082,7 +1119,7 @@ function adminDashboard(){
     </div>
     <div class="group-section"><div class="subtle-title"><h3>오늘의 운영 요약</h3><span class="muted">복지몰 전체 현황</span></div>
       <div class="grid4">
-        <div class="kpi-card"><small>경조사 접수</small><strong>${s.condolenceCount}</strong></div>
+        <div class="kpi-card"><small>복지신청 접수</small><strong>${s.condolenceCount}</strong></div>
         <div class="kpi-card"><small>이벤트 신청</small><strong>${s.eventApps}</strong></div>
         <div class="kpi-card"><small>입금 예정</small><strong>${money(s.payAmount)}</strong></div>
       </div>
@@ -1239,28 +1276,38 @@ function markCondolencePaid(id){
 }
 function condolenceTypeAdmin(){
   const rows=(state.condolenceTypes||[]).map(t=>({...t,amount:Number(t.amount||0)}));
-  return`<div class="panel"><h3>경조사 구분 추가</h3><form class="form" onsubmit="addCondolenceType(event)">
-    <label>구분명<input name="name" required placeholder="예: 입학, 부모님 생신"></label>
-    <label>설명<input name="description"></label>
-    <label>신청금액<input type="number" name="amount" value="0" min="0" required></label>
-    <button class="wide">구분 추가</button>
-  </form></div><section class="section"><h2>경조사 구분 목록 / 신청금액 설정</h2><table class="table"><thead><tr><th>구분명</th><th>설명</th><th>신청금액</th><th>관리</th></tr></thead><tbody>${rows.map(t=>`<tr><td><input id="ctn_${t.id}" value="${t.name}"></td><td><input id="ctd_${t.id}" value="${t.description||t.desc||""}"></td><td><input id="cta_${t.id}" type="number" min="0" value="${t.amount||0}"></td><td class="actions"><button onclick="updateCondolenceType('${t.id}')">수정</button>${state.condolenceTypes.length<=1?``:`<button class="danger" onclick="deleteCondolenceType('${t.id}')">삭제</button>`}</td></tr>`).join("")}</tbody></table></section>`;
+  const cats=["축의금","회갑/칠순/팔순/구순","출산","돌","대학장학금","입학축하금","문화지원금","가족건강검진","조의금","기타"];
+  return`<div class="panel"><h3>복지 항목 추가</h3><form class="form" onsubmit="addCondolenceType(event)">
+    <label>분류<select name="category">${cats.map(c=>`<option>${c}</option>`).join("")}</select></label>
+    <label>항목명<input name="name" required placeholder="예: 본인 결혼, 문화지원금"></label>
+    <label>내용/설명<input name="description"></label>
+    <label>지급금액/한도<input type="number" name="amount" value="0" min="0" required></label>
+    <label>경조휴가<input name="leaveDays" placeholder="예: 5일, 법정기간"></label>
+    <label>화환/조화<input name="flower" placeholder="예: ○"></label>
+    <label class="wide">증빙서류<input name="docs" placeholder="예: 청첩장, 청구 영수증, 주민등록등본"></label>
+    <button class="wide">복지 항목 추가</button>
+  </form></div><section class="section"><h2>복지 항목 목록 / 지급 기준 설정</h2><table class="table"><thead><tr><th>분류</th><th>항목명</th><th>내용/설명</th><th>지급금액/한도</th><th>휴가</th><th>화환/조화</th><th>증빙서류</th><th>관리</th></tr></thead><tbody>${rows.map(t=>`<tr><td><input id="ctc_${t.id}" value="${benefitTypeCategory(t)}"></td><td><input id="ctn_${t.id}" value="${t.name}"></td><td><input id="ctd_${t.id}" value="${t.description||t.desc||""}"></td><td><input id="cta_${t.id}" type="number" min="0" value="${t.amount||0}"></td><td><input id="ctl_${t.id}" value="${t.leaveDays||""}"></td><td><input id="ctf_${t.id}" value="${t.flower||""}"></td><td><input id="ctdoc_${t.id}" value="${t.docs||""}"></td><td class="actions"><button onclick="updateCondolenceType('${t.id}')">수정</button>${state.condolenceTypes.length<=1?``:`<button class="danger" onclick="deleteCondolenceType('${t.id}')">삭제</button>`}</td></tr>`).join("")}</tbody></table></section>`;
 }
+
 function addCondolenceType(e){
   e.preventDefault();
   const f=new FormData(e.target);
   const name=f.get("name").trim();
   if(state.condolenceTypes.some(t=>t.name===name))return toast("이미 등록된 구분입니다.");
-  state.condolenceTypes.push({id:uid(),name,description:f.get("description")||"",amount:Number(f.get("amount")||0)});
-  save();toast("경조사 구분 추가");render();
+  state.condolenceTypes.push({id:uid(),category:f.get("category")||"기타",name,description:f.get("description")||"",amount:Number(f.get("amount")||0),leaveDays:f.get("leaveDays")||"",flower:f.get("flower")||"",docs:f.get("docs")||""});
+  save();toast("복지 항목 추가");render();
 }
 function updateCondolenceType(id){
   const t=state.condolenceTypes.find(x=>x.id===id);
   const name=document.getElementById("ctn_"+id).value.trim();
   if(!name)return toast("구분명을 입력해 주세요.");
   t.name=name;
+  t.category=document.getElementById("ctc_"+id).value;
   t.description=document.getElementById("ctd_"+id).value;
   t.amount=Number(document.getElementById("cta_"+id).value||0);
+  t.leaveDays=document.getElementById("ctl_"+id).value;
+  t.flower=document.getElementById("ctf_"+id).value;
+  t.docs=document.getElementById("ctdoc_"+id).value;
   save();toast("수정 완료");render();
 }
 function deleteCondolenceType(id){
@@ -1279,12 +1326,12 @@ function deleteCondolenceType(id){
 function condolenceAdminGroup(){
   return `<div class="group-box">
     <div class="group-section">
-      <div class="subtle-title"><h3>경조사 구분 관리</h3><span class="muted">구분별 신청금액 설정</span></div>
+      <div class="subtle-title"><h3>복지 항목 관리</h3><span class="muted">항목별 지급금액, 휴가, 증빙서류 설정</span></div>
       ${condolenceTypeAdmin()}
     </div>
     <div class="group-section">
-      <div class="subtle-title"><h3>경조사 접수 현황</h3><span class="muted">승인, 반려, 신청서 출력, 증빙자료 출력</span></div>
-      ${adminBulkToolbar('condolences','경조사 접수 내역','chkCondolence')}
+      <div class="subtle-title"><h3>복지신청 접수 현황</h3><span class="muted">승인, 반려, 신청서 출력, 증빙자료 출력</span></div>
+      ${adminBulkToolbar('condolences','복지신청 접수 내역','chkCondolence')}
       ${condolenceTable(state.condolences||[],true)}
     </div>
   </div>`;
@@ -1459,11 +1506,6 @@ function policyAdmin(){return`<div class="panel"><h3>숙소 할인 조건 추가
 function addPolicy(e){e.preventDefault();const f=new FormData(e.target);const name=f.get("name").trim();if(state.usePolicies.some(p=>p.name===name))return toast("이미 등록된 이용 구분명입니다.");state.usePolicies.push({id:uid(),name,discountRate:Number(f.get("discountRate")),paymentRequired:f.get("paymentRequired")==="true",description:f.get("description")||""});save();toast("할인 조건 추가");render();}
 function updatePolicy(id){const p=state.usePolicies.find(x=>x.id===id);const name=document.getElementById("pn_"+id).value.trim();if(!name)return toast("이용 구분명을 입력해 주세요.");if(state.usePolicies.some(x=>x.id!==id&&x.name===name))return toast("이미 등록된 이용 구분명입니다.");p.name=name;p.discountRate=Number(document.getElementById("pr_"+id).value);p.paymentRequired=document.getElementById("pp_"+id).value==="true";p.description=document.getElementById("pd_"+id).value;save();toast("할인 조건 수정");render();}
 function deletePolicy(id){if(state.usePolicies.length<=1)return toast("할인 조건은 최소 1개 이상 필요합니다.");const p=state.usePolicies.find(x=>x.id===id);if(state.reservations.some(r=>r.useType===p.name&&r.status!=="취소"&&r.status!=="반려"))return toast("사용 중인 할인 조건은 삭제할 수 없습니다.");if(!confirm("삭제할까요?"))return;state.usePolicies=state.usePolicies.filter(x=>x.id!==id);save();toast("삭제 완료");render();}
-
-function condolenceTypeAdmin(){return`<div class="panel"><h3>경조사 구분 추가</h3><form class="form" onsubmit="addCondolenceType(event)"><label>구분명<input name="name" required placeholder="예: 입학, 부모님 생신"></label><label>설명<input name="description"></label><label>금액<input name="amount" type="number" min="0" value="0"></label><button class="wide">구분 추가</button></form></div><section class="section"><h2>경조사 구분 목록</h2><table class="table"><thead><tr><th>구분명</th><th>설명</th><th>신청금액</th><th>관리</th></tr></thead><tbody>${state.condolenceTypes.map(t=>`<tr><td><input id="ctn_${t.id}" value="${t.name}"></td><td><input id="ctd_${t.id}" value="${t.description||''}"></td><td><input id="cta_${t.id}" type="number" min="0" value="${Number(t.amount||0)}"></td><td class="actions"><button onclick="updateCondolenceType('${t.id}')">수정</button>${state.condolenceTypes.length<=1?``:`<button class="danger" onclick="deleteCondolenceType('${t.id}')">삭제</button>`}</td></tr>`).join("")}</tbody></table></section>`;}
-function addCondolenceType(e){e.preventDefault();const f=new FormData(e.target);const name=f.get("name").trim();if(state.condolenceTypes.some(t=>t.name===name))return toast("이미 등록된 구분입니다.");state.condolenceTypes.push({id:uid(),name,description:f.get("description")||"",amount:Number(f.get("amount")||0)});save();toast("경조사 구분 추가");render();}
-function updateCondolenceType(id){const t=state.condolenceTypes.find(x=>x.id===id);const name=document.getElementById("ctn_"+id).value.trim();if(!name)return toast("구분명을 입력해 주세요.");if(state.condolenceTypes.some(x=>x.id!==id&&x.name===name))return toast("이미 등록된 구분입니다.");t.name=name;t.description=document.getElementById("ctd_"+id).value;t.amount=Number(document.getElementById("cta_"+id).value||0);save();toast("수정 완료");render();}
-function deleteCondolenceType(id){const t=state.condolenceTypes.find(x=>x.id===id);if(state.condolences.some(c=>c.type===t.name))return toast("접수 이력이 있는 구분은 삭제할 수 없습니다.");if(!confirm("삭제할까요?"))return;state.condolenceTypes=state.condolenceTypes.filter(x=>x.id!==id);save();toast("삭제 완료");render();}
 
 function eventAdmin(){return`<div class="panel"><h3>이벤트 추가</h3><form class="form" onsubmit="addEvent(event)"><label>이벤트명<input name="title" required></label><label>이벤트일<input type="date" name="date" required></label><label>신청 제한 인원<input type="number" name="limit" value="30" required></label><label>구분<select name="isOpen"><option value="true">신청</option><option value="false">일반</option></select></label><label class="wide">안내 내용<textarea name="memo"></textarea></label><button class="wide">이벤트 추가</button></form></div><section class="section"><h2>이벤트 목록</h2><table class="table"><thead><tr><th>이벤트명</th><th>일자</th><th>제한</th><th>구분</th><th>내용</th><th>관리</th></tr></thead><tbody>${state.events.map(e=>`<tr><td><input id="et_${e.id}" value="${e.title}"></td><td><input id="ed_${e.id}" type="date" value="${e.date}"></td><td><input id="el_${e.id}" type="number" value="${e.limit}"></td><td><select id="eo_${e.id}"><option value="true" ${e.isOpen!==false?'selected':''}>신청</option><option value="false" ${e.isOpen===false?'selected':''}>일반</option></select></td><td><input id="em_${e.id}" value="${e.memo||''}"></td><td class="actions"><button onclick="updateEvent('${e.id}')">수정</button><button class="danger" onclick="deleteEvent('${e.id}')">삭제</button></td></tr>`).join("")}</tbody></table></section>`;}
 function addEvent(e){e.preventDefault();const f=new FormData(e.target);state.events.push({id:uid(),title:f.get("title"),date:f.get("date"),limit:Number(f.get("limit")),memo:f.get("memo")||"",isOpen:f.get("isOpen")==="true"});save();toast("이벤트 추가");render();}
