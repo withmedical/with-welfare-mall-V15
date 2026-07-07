@@ -238,12 +238,12 @@ button{min-height:42px}
 @media(min-width:981px){
   .benefit-item-table{table-layout:fixed;min-width:800px}
   .benefit-item-table .c-cat{width:9%}
-  .benefit-item-table .c-name{width:14%}
-  .benefit-item-table .c-desc{width:14%}
-  .benefit-item-table .c-amount{width:12%}
+  .benefit-item-table .c-name{width:12%}
+  .benefit-item-table .c-desc{width:12%}
+  .benefit-item-table .c-amount{width:10%}
   .benefit-item-table .c-leave{width:8%}
   .benefit-item-table .c-flower{width:6%}
-  .benefit-item-table .c-docs{width:14%}
+  .benefit-item-table .c-docs{width:12%}
   .benefit-item-table .c-actions{width:13%}
   .benefit-item-table input,.benefit-item-table select{width:100%;max-width:none!important;padding:8px;font-size:13px}
   .benefit-item-table .actions{justify-content:flex-start;flex-wrap:nowrap}
