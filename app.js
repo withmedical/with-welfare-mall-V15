@@ -188,6 +188,8 @@ function v16DedupeState(){
   state.settings.homeBadge=state.settings.homeBadge||"Company Welfare Platform";
   state.settings.homeTitle=state.settings.homeTitle||"회원 승인형 회사 복지몰";
   state.settings.homeDescription=state.settings.homeDescription||"직원 25명 규모에 맞춘 위드메디컬 복지몰입니다.";
+  state.settings.googleExternalCalendarUrl=state.settings.googleExternalCalendarUrl||"";
+  state.settings.googleExternalLastSync=state.settings.googleExternalLastSync||"";
   if(!state.admins || !state.admins.length){
     state.admins=[{id:"a1", name:"김경진", role:"admin", loginId:"with1905", password:"withm*1905", dept:"관리자"}];
   }
@@ -1722,18 +1724,20 @@ function deleteRoomPhoto(roomId,photoId){
 function roomBlockAdmin(){return `<div class="panel"><h3>관리자 직접 예약 추가</h3><p class="muted">전화/수기 접수, 임직원 외 사용 등 관리자가 직접 등록하는 예약입니다. 캘린더에는 관리자 등록 색상으로 표시됩니다.</p><form class="form" onsubmit="addAdminReservation(event)"><label>숙소<select name="roomId">${state.rooms.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}</select></label><label>예약자명<input name="userName" required placeholder="예: 외부손님, 대표님 지인"></label><label>체크인<input type="date" name="checkin" required></label><label>체크아웃<input type="date" name="checkout" required></label><label>인원<input type="number" name="people" min="1" value="1" required></label><label>연락처<input name="phone"></label><label class="wide">메모<input name="memo" placeholder="관리자 직접 등록 사유"></label><button class="wide">관리자 예약 추가</button></form></div>
 <div class="panel" style="margin-top:12px"><h3>외부 예약 직접 등록</h3><p class="muted">Airbnb, 야놀자, 전화예약 등 외부에서 확정된 예약일을 차단용으로 등록합니다.</p><form class="form" onsubmit="addExternalReservation(event)"><label>숙소<select name="roomId">${state.rooms.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}</select></label><label>외부채널<input name="sourceName" required placeholder="예: Airbnb"></label><label>시작일<input type="date" name="start" required></label><label>종료일<input type="date" name="end" required></label><label class="wide">메모<input name="memo" placeholder="예약번호, 고객명 등"></label><button class="wide">외부 예약 추가</button></form></div>
 <table class="table" style="margin-top:12px"><thead><tr><th>숙소</th><th>기간</th><th>채널</th><th>메모</th><th>관리</th></tr></thead><tbody>${(state.externalReservations||[]).map(b=>`<tr><td>${(state.rooms.find(r=>r.id===b.roomId)||{}).name}</td><td>${b.start} ~ ${b.end}</td><td>${b.sourceName||"외부"}</td><td>${b.memo||""}</td><td><button class="danger" onclick="deleteExternalReservation('${b.id}')">삭제</button></td></tr>`).join("")||`<tr><td colspan="5" class="empty">외부 예약 등록 내역이 없습니다.</td></tr>`}</tbody></table>
-<div class="panel" style="margin-top:12px"><h3>외부 예약 캘린더 URL</h3><p class="muted">Google Calendar, Airbnb 등 iCal/ICS 주소를 숙소별로 입력한 뒤 동기화하면 외부 일정이 예약불가일로 반영됩니다.</p><form class="form" onsubmit="saveExternalCalendarUrls(event)">${state.rooms.map(r=>`<label class="wide">${r.name} 외부 예약 캘린더 URL<input name="cal_${r.id}" value="${r.externalCalendarUrl||''}" placeholder="https://...ics"></label><div class="wide muted">마지막 동기화: ${r.externalLastSync||"없음"}</div>`).join("")}<button class="wide">캘린더 URL 저장</button><button type="button" class="secondary wide" onclick="syncExternalCalendars()">외부 캘린더 동기화</button></form></div>
+<div class="panel" style="margin-top:12px"><h3>외부 예약 캘린더 관리</h3><p class="muted">Google은 통합 캘린더 1개를 사용하고, 제목을 <b>[숙소명] 예약자명</b> 형식으로 입력합니다. Airbnb는 숙소별 iCal/ICS URL을 각각 입력합니다.</p><form class="form" onsubmit="saveExternalCalendarUrls(event)"><label class="wide">Google 통합 캘린더 URL<input name="googleCalendarUrl" value="${state.settings.googleExternalCalendarUrl||''}" placeholder="https://calendar.google.com/.../basic.ics"></label><div class="wide muted">Google 제목 규칙: [솔레동] 강익주 / [스텔라동] 안혁 · 마지막 동기화: ${state.settings.googleExternalLastSync||"없음"}</div><div class="wide"><hr></div>${state.rooms.map(r=>`<label class="wide">${r.name} Airbnb 캘린더 URL<input name="airbnb_${r.id}" value="${r.airbnbCalendarUrl||r.externalCalendarUrl||''}" placeholder="https://...ics"></label><div class="wide muted">${r.name} Airbnb 마지막 동기화: ${r.airbnbLastSync||r.externalLastSync||"없음"}</div>`).join("")}<button class="wide">외부 캘린더 URL 저장</button><button type="button" class="secondary wide" onclick="syncExternalCalendars()">외부 캘린더 동기화</button></form></div>
 <div class="panel" style="margin-top:12px"><h3>복지몰 예약 캘린더 내보내기</h3><p class="muted">복지몰에서 승인된 숙소 예약과 관리자 직접 예약, 예약 차단 기간을 ICS로 제공합니다. Cloudflare Pages 배포 후 아래 실시간 ICS 주소를 Google Calendar 또는 Airbnb에 등록하면 외부 달력에서 복지몰 예약일을 예약불가로 가져갈 수 있습니다.</p><div class="calendar-url-list">${state.rooms.map(r=>`<div class="calendar-url-row"><b>${r.name}</b><input readonly value="${liveRoomICSUrl(r.id)}" onclick="this.select()"><button type="button" class="secondary" onclick="copyText('${liveRoomICSUrl(r.id)}')">주소 복사</button><button type="button" class="secondary" onclick="downloadRoomICS('${r.id}')">ICS 다운로드</button></div>`).join("")}<div class="calendar-url-row"><b>전체 숙소</b><input readonly value="${liveAllRoomICSUrl()}" onclick="this.select()"><button type="button" class="secondary" onclick="copyText('${liveAllRoomICSUrl()}')">주소 복사</button><button type="button" onclick="downloadAllRoomICS()">전체 다운로드</button></div></div><p class="muted">※ 로컬 파일로 열었을 때는 주소 복사 대신 다운로드 테스트를 사용하세요. 운영 배포 후에는 https://도메인/ics?room=숙소ID 주소가 자동으로 동작합니다.</p></div>
 <div class="panel" style="margin-top:12px"><h3>예약 차단 관리</h3><form class="form" onsubmit="addRoomBlock(event)"><label>숙소<select name="roomId">${state.rooms.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}</select></label><label>시작일<input type="date" name="start" required></label><label>종료일<input type="date" name="end" required></label><label>사유<input name="reason" required></label><button class="wide">예약 차단 추가</button></form></div><table class="table" style="margin-top:12px"><thead><tr><th>숙소</th><th>기간</th><th>사유</th><th>관리</th></tr></thead><tbody>${(state.roomBlocks||[]).map(b=>`<tr><td>${(state.rooms.find(r=>r.id===b.roomId)||{}).name}</td><td>${b.start} ~ ${b.end}</td><td>${b.reason}</td><td><button class="danger" onclick="deleteRoomBlock('${b.id}')">삭제</button></td></tr>`).join("")||`<tr><td colspan="4" class="empty">예약 차단 내역이 없습니다.</td></tr>`}</tbody></table>`;}
 function addAdminReservation(e){e.preventDefault();const f=new FormData(e.target);const room=state.rooms.find(r=>r.id===f.get("roomId"));const checkin=f.get("checkin"),checkout=f.get("checkout");const nights=calcNights(checkin,checkout);if(nights<=0)return toast("체크아웃은 체크인 이후 날짜여야 합니다.");if(!isRoomAvailable(room.id,checkin,checkout))return toast("해당 기간은 이미 예약 또는 차단되어 있습니다.");const people=Number(f.get("people")||1);state.reservations.push({id:uid(),userId:"admin_manual",userName:f.get("userName"),dept:"관리자 등록",roomId:room.id,roomName:room.name,checkin,checkout,nights,people,extraPeople:Math.max(0,people-room.basePeople),useType:"관리자 등록",discountRate:100,paymentRequired:false,amount:0,bankInfo:"",phone:f.get("phone"),payer:"",memo:f.get("memo"),status:"승인",checkinStatus:"이용대기",source:"manual",createdAt:new Date().toLocaleString()});audit("관리자 직접 예약 추가",`${f.get("userName")}/${room.name}/${checkin}~${checkout}`);save();toast("관리자 예약이 추가되었습니다.");render();}
 function addExternalReservation(e){e.preventDefault();const f=new FormData(e.target);const roomId=f.get("roomId"),start=f.get("start"),end=f.get("end");if(end<=start)return toast("종료일은 시작일 이후여야 합니다.");if(!isRoomAvailable(roomId,start,end))return toast("해당 기간은 이미 예약 또는 차단되어 있습니다.");state.externalReservations.push({id:uid(),roomId,start,end,sourceName:f.get("sourceName"),memo:f.get("memo"),createdAt:new Date().toLocaleString()});audit("외부 예약 추가",`${f.get("sourceName")}/${start}~${end}`);save();toast("외부 예약이 추가되었습니다.");render();}
 function deleteExternalReservation(id){state.externalReservations=(state.externalReservations||[]).filter(b=>b.id!==id);audit("외부 예약 삭제",id);save();toast("삭제 완료");render();}
-function saveExternalCalendarUrls(e){e.preventDefault();const f=new FormData(e.target);state.rooms=state.rooms.map(r=>({...r,externalCalendarUrl:f.get("cal_"+r.id)||"",externalLastSync:r.externalLastSync||""}));audit("외부 예약 캘린더 URL 저장","");save();toast("캘린더 URL이 저장되었습니다.");render();}
+function saveExternalCalendarUrls(e){e.preventDefault();const f=new FormData(e.target);state.settings.googleExternalCalendarUrl=f.get("googleCalendarUrl")||"";state.settings.googleExternalLastSync=state.settings.googleExternalLastSync||"";state.rooms=state.rooms.map(r=>({...r,airbnbCalendarUrl:f.get("airbnb_"+r.id)||"",airbnbLastSync:r.airbnbLastSync||r.externalLastSync||"",externalCalendarUrl:f.get("airbnb_"+r.id)||"",externalLastSync:r.externalLastSync||""}));audit("외부 예약 캘린더 URL 저장","Google/Airbnb 분리 저장");save();toast("외부 캘린더 URL이 저장되었습니다.");render();}
 
 function unfoldICS(text){return String(text||"").replace(/\r\n[ \t]/g,"").replace(/\n[ \t]/g,"");}
 function icsValue(line){const i=line.indexOf(":");return i>=0?line.slice(i+1).trim():"";}
+function icsText(v){return String(v||"").replace(/\\n/g,"\n").replace(/\\,/g,",").replace(/\\;/g,";").replace(/\\\\/g,"\\").trim();}
 function icsDate(v){if(!v)return"";v=String(v).trim();if(/^\d{8}$/.test(v))return `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`;const m=v.match(/^(\d{4})(\d{2})(\d{2})T/);if(m)return `${m[1]}-${m[2]}-${m[3]}`;return v.slice(0,10);}
-function parseICS(text,roomId){const clean=unfoldICS(text);const events=[];const blocks=clean.split("BEGIN:VEVENT").slice(1);blocks.forEach(block=>{const part=block.split("END:VEVENT")[0]||"";const lines=part.split(/\r?\n/);let start="",end="",summary="";lines.forEach(line=>{if(line.startsWith("DTSTART"))start=icsDate(icsValue(line));else if(line.startsWith("DTEND"))end=icsDate(icsValue(line));else if(line.startsWith("SUMMARY"))summary=icsValue(line);});if(start){if(!end)end=addDays(start,1);if(end<=start)end=addDays(start,1);events.push({id:uid(),roomId,start,end,sourceName:"외부캘린더",memo:summary||"ICS 동기화",syncKey:"ics_"+roomId,createdAt:new Date().toLocaleString()});}});return events;}
+function parseGoogleRoomTitle(summary){const text=icsText(summary);const m=text.match(/^\s*\[([^\]]+)\]\s*(.*)$/);if(!m)return null;const roomName=m[1].trim();const guest=(m[2]||"").trim();const room=(state.rooms||[]).find(r=>String(r.name||"").trim()===roomName);if(!room)return null;return {room,guest};}
+function parseICS(text,roomId,opts={}){const clean=unfoldICS(text);const events=[];const blocks=clean.split("BEGIN:VEVENT").slice(1);blocks.forEach(block=>{const part=block.split("END:VEVENT")[0]||"";const lines=part.split(/\r?\n/);let start="",end="",summary="";lines.forEach(line=>{if(line.startsWith("DTSTART"))start=icsDate(icsValue(line));else if(line.startsWith("DTEND"))end=icsDate(icsValue(line));else if(line.startsWith("SUMMARY"))summary=icsValue(line);});if(start){if(!end)end=addDays(start,1);if(end<=start)end=addDays(start,1);let targetRoomId=roomId,sourceName=opts.sourceName||"외부캘린더",memo=icsText(summary)||"ICS 동기화";if(opts.mode==="google"){const parsed=parseGoogleRoomTitle(summary);if(!parsed)return;targetRoomId=parsed.room.id;sourceName="Google Calendar";memo=parsed.guest?`${parsed.guest} (${icsText(summary)})`:icsText(summary);}events.push({id:uid(),roomId:targetRoomId,start,end,sourceName,memo,syncKey:opts.syncKey||("ics_"+targetRoomId),createdAt:new Date().toLocaleString()});}});return events;}
 function addDays(ds,n){const d=new Date(ds+"T00:00:00");d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
 async function fetchICS(url){try{const res=await fetch(url,{cache:"no-store"});if(res.ok)return await res.text();}catch(e){}
   const proxy="https://api.allorigins.win/raw?url="+encodeURIComponent(url);
@@ -1742,18 +1746,31 @@ async function fetchICS(url){try{const res=await fetch(url,{cache:"no-store"});i
   return await res.text();
 }
 async function syncExternalCalendars(){
-  const rooms=(state.rooms||[]).filter(r=>r.externalCalendarUrl&&r.externalCalendarUrl.trim());
-  if(!rooms.length)return toast("등록된 외부 캘린더 URL이 없습니다.");
+  const googleUrl=(state.settings.googleExternalCalendarUrl||"").trim();
+  const airbnbRooms=(state.rooms||[]).filter(r=>(r.airbnbCalendarUrl||r.externalCalendarUrl||"").trim());
+  if(!googleUrl&&!airbnbRooms.length)return toast("등록된 외부 캘린더 URL이 없습니다.");
   let total=0,failed=[];
-  for(const room of rooms){
+  if(googleUrl){
     try{
-      const text=await fetchICS(room.externalCalendarUrl.trim());
-      const events=parseICS(text,room.id);
-      state.externalReservations=(state.externalReservations||[]).filter(r=>r.syncKey!=="ics_"+room.id);
+      const text=await fetchICS(googleUrl);
+      const events=parseICS(text,null,{mode:"google",sourceName:"Google Calendar",syncKey:"ics_google"});
+      state.externalReservations=(state.externalReservations||[]).filter(r=>r.syncKey!=="ics_google");
       state.externalReservations.push(...events);
-      room.externalLastSync=new Date().toLocaleString();
+      state.settings.googleExternalLastSync=new Date().toLocaleString();
       total+=events.length;
-    }catch(err){failed.push(room.name);}
+    }catch(err){failed.push("Google");}
+  }
+  for(const room of airbnbRooms){
+    try{
+      const url=(room.airbnbCalendarUrl||room.externalCalendarUrl||"").trim();
+      const text=await fetchICS(url);
+      const events=parseICS(text,room.id,{sourceName:"Airbnb",syncKey:"ics_airbnb_"+room.id});
+      state.externalReservations=(state.externalReservations||[]).filter(r=>r.syncKey!=="ics_airbnb_"+room.id);
+      state.externalReservations.push(...events);
+      room.airbnbLastSync=new Date().toLocaleString();
+      room.externalLastSync=room.externalLastSync||room.airbnbLastSync;
+      total+=events.length;
+    }catch(err){failed.push(room.name+" Airbnb");}
   }
   audit("외부 캘린더 동기화",`${total}건 / 실패 ${failed.length}건`);
   save();
