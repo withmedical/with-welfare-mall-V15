@@ -819,7 +819,7 @@ function updateCondolenceAmountPreview(sel){
   const docs=document.getElementById("benefitDocsPreview");
   if(docs) docs.innerText=benefitTypeDocs(t)||"항목별 증빙자료를 첨부해 주세요.";
   const leave=document.getElementById("benefitMetaPreview");
-  if(leave) leave.innerText=[benefitTypeLeave(t)?`휴가 ${benefitTypeLeave(t)}`:"", benefitTypeFlower(t)?`화환/조화 ${benefitTypeFlower(t)}`:""].filter(Boolean).join(" · ")||"해당 없음";
+  if(leave) leave.innerText=[benefitTypeLeave(t)?`휴가 ${benefitTypeLeave(t)}`:"", benefitTypeFlower(t)?`화환 ${benefitTypeFlower(t)}`:""].filter(Boolean).join(" · ")||"해당 없음";
 }
 function typeName(t){return typeof t==="string"?t:t.name;}
 function typeAmount(t){return Number(typeof t==="string"?0:(t.amount||0));}
@@ -871,7 +871,7 @@ function printCondolenceForm(id){
     <table class="form"><tr><th>성 명</th><td>${c.userName||""}</td><th>소 속</th><td>${c.dept||""}</td></tr><tr><th>직 위</th><td>${c.position||""}</td><th>연락처</th><td>${c.contact||""}</td></tr></table>
     <h2>2. 신청사항</h2>
     <table class="form"><tr><th>신청구분</th><td colspan="3" class="center">${c.type||""}</td></tr><tr><th>신청내용</th><td>${c.condolenceContent||""}</td><th>신청금액</th><td>${money(c.amount||0)}</td></tr><tr><th>발생/이용일자</th><td colspan="3" class="center">${c.eventDate||c.date||""}</td></tr><tr><th>대상자</th><td colspan="3">- 생년월일 : ${c.targetBirth||""}<br>- 성명 : ${c.targetName||""}<br>- 신청인과의 관계 : ${c.targetRelation||""}</td></tr></table>
-    <div class="note">* 지급 기준, 휴가, 화환/조화, 제출서류는 회사 복지 지급 기준을 따른다.<br>* 증빙자료는 별도 첨부파일을 확인한다.</div>
+    <div class="note">* 지급 기준, 휴가, 화환, 제출서류는 회사 복지 지급 기준을 따른다.<br>* 증빙자료는 별도 첨부파일을 확인한다.</div>
     <div class="request">상기의 내용으로 복지지원금의 지급을 신청합니다.</div>
     <div class="date">${printDate}</div>
     <div class="sign">신청자 : ${c.userName||""}</div>
@@ -901,7 +901,7 @@ function family(){
       <label class="wide">신청인과의 관계<input name="targetRelation" placeholder="예: 본인, 배우자, 부, 모, 자녀 등" required></label>
       <label class="wide">증빙자료 첨부 PDF/이미지<input type="file" name="file" accept=".pdf,image/*"></label>
       <p class="wide muted">예상 신청금액: <b id="condolenceAmountPreview">${money(condolenceAmountByType(firstType))}</b> · 제출서류: <b id="benefitDocsPreview">${benefitTypeDocs(first)||"항목별 증빙자료를 첨부해 주세요."}</b></p>
-      <p class="wide muted">추가 기준: <b id="benefitMetaPreview">${[benefitTypeLeave(first)?`휴가 ${benefitTypeLeave(first)}`:"", benefitTypeFlower(first)?`화환/조화 ${benefitTypeFlower(first)}`:""].filter(Boolean).join(" · ")||"해당 없음"}</b></p>
+      <p class="wide muted">추가 기준: <b id="benefitMetaPreview">${[benefitTypeLeave(first)?`휴가 ${benefitTypeLeave(first)}`:"", benefitTypeFlower(first)?`화환 ${benefitTypeFlower(first)}`:""].filter(Boolean).join(" · ")||"해당 없음"}</b></p>
       <button class="wide">복지지원금 신청</button>
     </form>
   </div>
@@ -1341,10 +1341,10 @@ function condolenceTypeAdmin(){
     <label>내용/설명<input name="description"></label>
     <label>지급금액/한도<input type="number" name="amount" value="0" min="0" required></label>
     <label>경조휴가<input name="leaveDays" placeholder="예: 5일, 법정기간"></label>
-    <label>화환/조화<input name="flower" placeholder="예: ○"></label>
+    <label>화환<input name="flower" placeholder="예: ○"></label>
     <label class="wide">증빙서류<input name="docs" placeholder="예: 청첩장, 청구 영수증, 주민등록등본"></label>
     <button class="wide">복지 항목 추가</button>
-  </form></div><section class="section"><h2>복지 항목 목록 / 지급 기준 설정</h2><table class="table benefit-item-table"><colgroup><col class="c-cat"><col class="c-name"><col class="c-desc"><col class="c-amount"><col class="c-leave"><col class="c-flower"><col class="c-docs"><col class="c-actions"></colgroup><thead><tr><th>분류</th><th>항목명</th><th>내용/설명</th><th>지급금액/한도</th><th>휴가</th><th>화환/조화</th><th>증빙서류</th><th>관리</th></tr></thead><tbody>${rows.map(t=>`<tr><td><input id="ctc_${t.id}" value="${benefitTypeCategory(t)}"></td><td><input id="ctn_${t.id}" value="${t.name}"></td><td><input id="ctd_${t.id}" value="${t.description||t.desc||""}"></td><td><input id="cta_${t.id}" type="number" min="0" value="${t.amount||0}"></td><td><input id="ctl_${t.id}" value="${t.leaveDays||""}"></td><td><input id="ctf_${t.id}" value="${t.flower||""}"></td><td><input id="ctdoc_${t.id}" value="${t.docs||""}"></td><td class="actions"><button onclick="updateCondolenceType('${t.id}')">수정</button>${state.condolenceTypes.length<=1?``:`<button class="danger" onclick="deleteCondolenceType('${t.id}')">삭제</button>`}</td></tr>`).join("")}</tbody></table></section>`;
+  </form></div><section class="section"><h2>복지 항목 목록 / 지급 기준 설정</h2><table class="table benefit-item-table"><colgroup><col class="c-cat"><col class="c-name"><col class="c-desc"><col class="c-amount"><col class="c-leave"><col class="c-flower"><col class="c-docs"><col class="c-actions"></colgroup><thead><tr><th>분류</th><th>항목명</th><th>내용/설명</th><th>지급금액/한도</th><th>휴가</th><th>화환</th><th>증빙서류</th><th>관리</th></tr></thead><tbody>${rows.map(t=>`<tr><td><input id="ctc_${t.id}" value="${benefitTypeCategory(t)}"></td><td><input id="ctn_${t.id}" value="${t.name}"></td><td><input id="ctd_${t.id}" value="${t.description||t.desc||""}"></td><td><input id="cta_${t.id}" type="number" min="0" value="${t.amount||0}"></td><td><input id="ctl_${t.id}" value="${t.leaveDays||""}"></td><td><input id="ctf_${t.id}" value="${t.flower||""}"></td><td><input id="ctdoc_${t.id}" value="${t.docs||""}"></td><td class="actions"><button onclick="updateCondolenceType('${t.id}')">수정</button>${state.condolenceTypes.length<=1?``:`<button class="danger" onclick="deleteCondolenceType('${t.id}')">삭제</button>`}</td></tr>`).join("")}</tbody></table></section>`;
 }
 
 function addCondolenceType(e){
