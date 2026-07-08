@@ -269,3 +269,16 @@ button{min-height:42px}
 .mark.manualM{background:#f1e8ff;color:#6d28d9}
 .mark.externalM{background:#fff2d6;color:#b54708}
 .mark.blockM{background:#eef2f7;color:#475467}
+
+/* V23 운영 안정화: 예약 출처/숙소 인원 설정 */
+.legend-dot.google{background:#f59e0b}
+.legend-dot.airbnb{background:#16a34a}
+.mark.googleM{background:#fff2d6;color:#b54708}
+.mark.airbnbM{background:#e8f8ee;color:#087443}
+.source-badge{display:inline-block;border-radius:999px;padding:4px 8px;font-weight:900;font-size:12px;background:#eef2f7;color:#475467}
+.source-badge.google{background:#fff2d6;color:#b54708}
+.source-badge.airbnb{background:#e8f8ee;color:#087443}
+.source-badge.manual{background:#f1e8ff;color:#6d28d9}
+.source-badge.external{background:#eef2f7;color:#475467}
+.room-people-row{border:1px solid #edf1f6;border-radius:14px;padding:14px;background:#fbfcff}
+.room-people-row h4{margin:0 0 10px}
