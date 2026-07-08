@@ -282,3 +282,8 @@ button{min-height:42px}
 .source-badge.external{background:#eef2f7;color:#475467}
 .room-people-row{border:1px solid #edf1f6;border-radius:14px;padding:14px;background:#fbfcff}
 .room-people-row h4{margin:0 0 10px}
+
+/* V25 예약대기/알림센터 */
+.mark.pendingM{background:#fff7e6;color:#b54708}
+.legend-dot.pending{background:#f59e0b}
+.status.입금대기{background:#fff7e6;color:#b54708}
