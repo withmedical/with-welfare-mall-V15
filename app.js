@@ -800,6 +800,29 @@ function calendar(){
   }
   return html+`</div>`;
 }
+
+function showReserve(roomId){
+  const room=state.rooms.find(r=>r.id===roomId);
+  if(!room) return toast("숙소 정보를 찾을 수 없습니다.");
+  const u=user();
+  const el=document.getElementById("reserveForm");
+  if(!el) return toast("예약 신청 영역을 찾을 수 없습니다.");
+  el.innerHTML=`<div class="panel"><h2>${room.name} 예약 신청</h2><p class="muted">기본 ${room.basePeople||5}명 · 최대 ${room.maxPeople||8}명</p><form class="form" onsubmit="submitReservation(event,'${room.id}')" oninput="updateEstimate(this)" onchange="updateEstimate(this)">
+    <label>체크인<input type="date" name="checkin" required></label>
+    <label>체크아웃<input type="date" name="checkout" required></label>
+    <label>인원<input type="number" name="people" min="1" max="${room.maxPeople||8}" value="${room.basePeople||5}" required></label>
+    <label>사용 구분<select name="useType">${(state.usePolicies||[]).map(p=>`<option value="${p.name}">${p.name}</option>`).join("")}</select></label>
+    <label>연락처<input name="phone" value="${u.phone||""}" required></label>
+    <label>입금자명<input name="payer" value="${u.name||""}"></label>
+    <label class="wide">요청사항/메모<textarea name="memo" placeholder="필요 시 입력"></textarea></label>
+    <p id="estimate" class="notice">날짜를 선택하면 예상 금액이 표시됩니다.</p>
+    <div class="actions wide"><button type="submit">예약하기</button><button type="button" class="secondary" onclick="document.getElementById('reserveForm').innerHTML=''">닫기</button></div>
+  </form></div>`;
+  const form=el.querySelector("form");
+  if(form) updateEstimate(form);
+  el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
 function updateEstimate(form){const nights=calcNights(form.checkin.value,form.checkout.value);const useType=form.useType.value;const p=getPolicy(useType);const price=calcPrice(useType,nights,form.checkin.value,form.checkout.value);const seasonBase=(form.checkin.value&&form.checkout.value)?calcBaseBySeason(form.checkin.value,form.checkout.value):state.settings.nightlyPrice*(nights||0);const txt=p.paymentRequired?`${p.name}: 시즌요금 ${money(seasonBase)} 기준 할인율 ${p.discountRate}% 적용 · 예상 입금액 ${money(price)} · 입금계좌 ${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`:`${p.name}: 무료 적용 조건입니다. 예상 ${nights||0}박`;document.getElementById("estimate").innerText=txt;}
 function submitReservation(e,roomId){e.preventDefault();const f=new FormData(e.target);const checkin=f.get("checkin"),checkout=f.get("checkout"),people=Number(f.get("people")),useType=f.get("useType");const room=state.rooms.find(r=>r.id===roomId);const nights=calcNights(checkin,checkout);if(nights<=0)return toast("체크아웃은 체크인 이후 날짜여야 합니다.");if(people>room.maxPeople)return toast(`${room.name} 최대 인원은 ${room.maxPeople}명입니다.`);if(isBlocked(roomId,checkin,checkout))return toast("해당 기간은 예약 차단 기간입니다.");if(!isRoomAvailable(roomId,checkin,checkout))return toast("해당 기간은 이미 예약되어 있습니다.");const used=annualUsedNights(user().id,checkin.slice(0,4));if(used+nights>state.settings.annualNightLimit)return toast(`직원당 연간 ${state.settings.annualNightLimit}박 기준을 초과합니다. 현재 ${used}박 사용/신청 중입니다.`);const amount=calcPrice(useType,nights,checkin,checkout);const policy=getPolicy(useType);const newReservation={id:uid(),userId:user().id,userName:user().name,dept:user().dept||"",roomId,roomName:room.name,checkin,checkout,nights,people,extraPeople:Math.max(0,people-room.basePeople),useType,discountRate:policy.discountRate,paymentRequired:policy.paymentRequired,amount,bankInfo:`${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`,phone:f.get("phone"),payer:f.get("payer"),memo:f.get("memo"),status:"대기",checkinStatus:"이용대기",source:"welfare",createdAt:new Date().toLocaleString()};state.reservations.push(newReservation);addReservationTimeline(newReservation.id,"예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);addWebNotification("admin","숙소 예약 신청",`${user().name} / ${room.name} / ${checkin}~${checkout}`,newReservation.id);audit("숙소 예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);save();toast("예약 신청이 접수되었습니다.");setPage("stay");}
 function reservationTable(rows,admin){
