@@ -65,7 +65,7 @@ const seed={
   ],
   vacationSupport:[],
   notices:[
-    {id:"n1",title:"제주 사계펜션 예약 운영 안내",important:true,body:"스텔라동, 솔레동은 각각 기본 5인 기준입니다. 직원당 연간 10박 기준으로 운영합니다.",views:0},
+    {id:"n1",title:"제주 사계펜션 예약 운영 안내",important:true,body:"스텔라동, 솔레동은 숙소별 기본/최대 인원 기준에 따라 운영합니다.",views:0},
     {id:"n2",title:"지인 이용 시 50% 할인 금액 입금 안내",important:true,body:"지인 이용은 1박 270,000원 기준 50% 할인 금액을 회사 지정 계좌로 이체합니다.",views:0}
   ],
   mailOutbox:[]
@@ -765,7 +765,14 @@ function roomPhotoBlock(room){
     ? `<div class="room-photo"><img src="${photo}" alt="${room.name}"></div>`
     : `<div class="room-img ${room.id}">${room.name}</div>`;
 }
-function stay(){const u=user();const used=u.role==="admin"?0:annualUsedNights(u.id);return layout(`<section class="section"><h2>제주 사계펜션 숙소 예약</h2><p class="muted">스텔라동 / 솔레동 2개 동 운영 · 각 동 기본 5명 · 추가 인원 입력 가능 · 직원당 연간 ${state.settings.annualNightLimit}박 기준</p><div class="grid2">${state.rooms.map(r=>`<div class="card room-card">${roomPhotoBlock(r)}<div class="room-body"><h3>${r.name}</h3><p class="muted">기본 ${r.basePeople}명 · 최대 ${r.maxPeople}명</p><button onclick="showReserve('${r.id}')">예약 신청</button></div></div>`).join("")}</div></section><section class="section panel"><div class="cal-head"><h2>예약 현황 캘린더</h2><div><button class="secondary" onclick="moveMonth(-1)">이전</button> <b>${calDate.getFullYear()}년 ${calDate.getMonth()+1}월</b> <button class="secondary" onclick="moveMonth(1)">다음</button></div></div>${calendar()}</section><section id="reserveForm" class="section"></section><section class="section"><h2>내 예약 현황</h2><p class="muted">올해 사용/신청 박수: ${used}박 / ${state.settings.annualNightLimit}박</p>${reservationTable(state.reservations.filter(r=>r.userId===u.id),false)}</section>`);}
+function staySummaryText(){
+  const rooms=state.rooms||[];
+  const names=rooms.map(r=>r.name).join(" / ")||"숙소";
+  const bases=[...new Set(rooms.map(r=>Number(r.basePeople||5)))];
+  const baseText=bases.length===1?`각 동 기본 ${bases[0]}명`:rooms.map(r=>`${r.name} 기본 ${Number(r.basePeople||5)}명`).join(" · ");
+  return `${names} ${rooms.length||0}개 동 운영 · ${baseText} · 추가 인원 입력 가능`;
+}
+function stay(){const u=user();const used=u.role==="admin"?0:annualUsedNights(u.id);return layout(`<section class="section"><h2>제주 사계펜션 숙소 예약</h2><p class="muted">${staySummaryText()}</p><div class="grid2">${state.rooms.map(r=>`<div class="card room-card">${roomPhotoBlock(r)}<div class="room-body"><h3>${r.name}</h3><p class="muted">기본 ${r.basePeople}명 · 최대 ${r.maxPeople}명</p><button type="button" onclick="showReserve('${r.id}')">예약 신청</button></div></div>`).join("")}</div></section><section id="reserveForm" class="section"></section><section class="section panel"><div class="cal-head"><h2>예약 현황 캘린더</h2><div><button class="secondary" onclick="moveMonth(-1)">이전</button> <b>${calDate.getFullYear()}년 ${calDate.getMonth()+1}월</b> <button class="secondary" onclick="moveMonth(1)">다음</button></div></div>${calendar()}</section><section class="section"><h2>내 예약 현황</h2><p class="muted">올해 사용/신청 박수: ${used}박 / ${state.settings.annualNightLimit}박</p>${reservationTable(state.reservations.filter(r=>r.userId===u.id),false)}</section>`);}
 function moveMonth(n){calDate.setMonth(calDate.getMonth()+n);render();}
 function calendar(){
   const u=user();
@@ -1631,6 +1638,7 @@ function settingsAdmin(){
     <label>직원당 연간 박수 기준<input type="number" name="annualNightLimit" value="${s.annualNightLimit}" required></label>
     <button class="wide">설정 저장</button>
   </form></div>`;
+  el.scrollIntoView({behavior:"smooth",block:"start"});
 }
 function saveSettings(e){
   e.preventDefault();
@@ -2058,6 +2066,11 @@ function discountAdminGroup(){
     </div>
   </div>`;
 }
+window.showReserve=showReserve;
+window.submitReservation=submitReservation;
+window.updateEstimate=updateEstimate;
+window.moveMonth=moveMonth;
+
 function render(){
   finalHotfixCleanState();if(!session)return loginView();if(!user()){logout();return;}if(!ensureEnabledPage(page)){page="home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount"){page="home";app.innerHTML=home();}if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
 render();
