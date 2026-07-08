@@ -287,3 +287,10 @@ button{min-height:42px}
 .mark.pendingM{background:#fff7e6;color:#b54708}
 .legend-dot.pending{background:#f59e0b}
 .status.입금대기{background:#fff7e6;color:#b54708}
+
+/* V26 운영 안정화 */
+.attach-preview{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:12px;padding:10px;color:#667085;font-size:13px}
+.attach-thumbs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.attach-thumb,.attach-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:7px 10px;font-size:12px;font-weight:800}
+.attach-chip{background:#eef3ff;color:#2357d9;border:1px solid #d8e4ff}
+.source-badge.google{background:#fff4e5;color:#b54708}.source-badge.airbnb{background:#e7f8ee;color:#087443}.source-badge.manual{background:#f0eaff;color:#6941c6}.source-badge.external{background:#eef3ff;color:#2357d9}

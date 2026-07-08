@@ -105,10 +105,14 @@ function migrate(){
   if(!state.notifications){state.notifications=[]; changed=true;}
   if(!state.kakaoOutbox){state.kakaoOutbox=[]; changed=true;}
   if(!state.reservationTimeline){state.reservationTimeline=[]; changed=true;}
+  if(!state.resetLogs){state.resetLogs=[]; changed=true;}
   if(!state.notificationSettings){
-    state.notificationSettings={kakaoEnabled:false,kakaoProvider:"",kakaoSenderKey:"",templates:{reservationReceived:"숙소 예약이 접수되었습니다.",reservationApproved:"숙소 예약이 확정되었습니다.",reservationRejected:"숙소 예약이 반려되었습니다.",reservationCanceled:"숙소 예약이 취소되었습니다.",benefitApproved:"복지신청이 승인되었습니다.",eventSelected:"이벤트 신청 결과를 확인해 주세요."}};
+    state.notificationSettings={kakaoEnabled:false,kakaoProvider:"",kakaoApiKey:"",kakaoSecretKey:"",kakaoSenderKey:"",templates:{reservationReceived:"숙소 예약이 접수되었습니다.",reservationApproved:"숙소 예약이 확정되었습니다.",reservationRejected:"숙소 예약이 반려되었습니다.",reservationCanceled:"숙소 예약이 취소되었습니다.",benefitApproved:"복지신청이 승인되었습니다.",eventSelected:"이벤트 신청 결과를 확인해 주세요."}};
     changed=true;
   }
+  if(!state.notificationSettings.kakaoApiKey){state.notificationSettings.kakaoApiKey=""; changed=true;}
+  if(!state.notificationSettings.kakaoSecretKey){state.notificationSettings.kakaoSecretKey=""; changed=true;}
+  if(!state.notificationSettings.kakaoSenderKey){state.notificationSettings.kakaoSenderKey=""; changed=true;}
   if(!state.settings.paymentDeadlineHours){state.settings.paymentDeadlineHours=24; changed=true;}
   if(!state.settings.refundPolicy){
     state.settings.refundPolicy=[
@@ -579,7 +583,7 @@ function condolenceTable(rows,admin){
     <td>${c.condolenceContent||c.memo||""}<br><span class="muted">${c.targetName||""} / ${c.targetRelation||""}</span></td>
     <td>${money(c.amount||0)}</td>
     <td><span class="status ${c.status||"접수"}">${c.status||"접수"}</span>${c.paymentStatus?`<br><span class="status">${c.paymentStatus}</span>`:""}</td>
-    <td>${attachmentPreviewLink(c.attachment)}</td>
+    <td>${attachmentPreviewLink(c)}</td>
     <td>${admin?condolenceAdminButtons(c):condolenceUserButtons(c)}</td>
   </tr>`).join("")}</tbody></table>`;
 }
@@ -1002,9 +1006,25 @@ function benefitTypeLeave(t){return typeof t==="string"?"":(t.leaveDays||"");}
 function benefitTypeFlower(t){return typeof t==="string"?"":(t.flower||"");}
 function benefitTypeByName(name){return (state.condolenceTypes||[]).find(x=>typeName(x)===name);}
 function benefitTypeLabel(t){const c=benefitTypeCategory(t); return `${c} / ${typeName(t)}`;}
-function attachmentPreviewLink(url){
-  if(!url) return "-";
-  return `<button class="secondary" onclick="openAttachment('${url}')">증빙자료 보기/출력</button>`;
+function attachmentList(item){
+  if(!item) return [];
+  if(Array.isArray(item.attachments) && item.attachments.length) return item.attachments;
+  if(Array.isArray(item)) return item;
+  const url=typeof item==="string"?item:item.attachment;
+  if(!url) return [];
+  return [{id:"legacy",name:item.fileName||"증빙자료",data:url}];
+}
+function attachmentPreviewLink(item){
+  const files=attachmentList(item);
+  if(!files.length) return "-";
+  return `<div class="attach-thumbs">${files.map((f,i)=>`<button class="secondary attach-thumb" onclick="openCondolenceAttachment('${typeof item==='object'&&item.id?item.id:''}',${i});return false;">${String(f.name||('증빙'+(i+1))).replace(/</g,'&lt;')}</button>`).join("")}</div>`;
+}
+function openCondolenceAttachment(requestId,idx){
+  const req=(state.condolences||[]).find(x=>x.id===requestId);
+  const files=attachmentList(req);
+  const file=files[idx];
+  if(!file) return toast("증빙자료를 찾을 수 없습니다.");
+  openAttachment(file.data||file.url||file);
 }
 function openAttachment(url){
   const w=window.open("", "_blank");
@@ -1072,7 +1092,7 @@ function family(){
       <label>대상자 성명<input name="targetName" placeholder="본인 또는 대상자 성명" required></label>
       <label>대상자 생년월일<input type="date" name="targetBirth"></label>
       <label class="wide">신청인과의 관계<input name="targetRelation" placeholder="예: 본인, 배우자, 부, 모, 자녀 등" required></label>
-      <label class="wide">증빙자료 첨부 PDF/이미지<input type="file" name="file" accept=".pdf,image/*"></label>
+      <label class="wide">증빙자료 첨부 PDF/이미지 최대 5장<input type="file" name="file" accept=".pdf,image/*" multiple onchange="previewBenefitFiles(this)"></label><div class="wide attach-preview" id="benefitFilePreview">선택된 증빙자료가 없습니다.</div>
       <p class="wide muted">예상 신청금액: <b id="condolenceAmountPreview">${money(condolenceAmountByType(firstType))}</b> · 제출서류: <b id="benefitDocsPreview">${benefitTypeDocs(first)||"항목별 증빙자료를 첨부해 주세요."}</b></p>
       <p class="wide muted">추가 기준: <b id="benefitMetaPreview">${[benefitTypeLeave(first)?`휴가 ${benefitTypeLeave(first)}`:"", benefitTypeFlower(first)?`화환 ${benefitTypeFlower(first)}`:""].filter(Boolean).join(" · ")||"해당 없음"}</b></p>
       <button class="wide">복지지원금 신청</button>
@@ -1082,13 +1102,36 @@ function family(){
   </section>`);
 }
 
+function previewBenefitFiles(input){
+  const box=document.getElementById("benefitFilePreview");
+  const files=Array.from(input.files||[]);
+  if(!box) return;
+  if(!files.length){box.innerHTML="선택된 증빙자료가 없습니다.";return;}
+  if(files.length>5){box.innerHTML="최대 5장까지 첨부 가능합니다.";return;}
+  box.innerHTML=`<div class="attach-thumbs">${files.map((f,i)=>`<span class="attach-chip">${i+1}. ${f.name}</span>`).join("")}</div>`;
+}
+function readBenefitFiles(files, done){
+  const arr=Array.from(files||[]);
+  if(arr.length>5) return toast("증빙자료는 최대 5장까지 첨부 가능합니다.");
+  for(const file of arr){
+    if(file.size>5*1024*1024) return toast("첨부파일은 개별 5MB 이하만 가능합니다.");
+    if(!(file.type.startsWith("image/") || file.type==="application/pdf")) return toast("PDF 또는 이미지 파일만 첨부 가능합니다.");
+  }
+  if(!arr.length) return done([]);
+  const out=[]; let left=arr.length;
+  arr.forEach(file=>{
+    const reader=new FileReader();
+    reader.onload=()=>{out.push({id:uid(),name:file.name,type:file.type,size:file.size,data:reader.result}); if(--left===0) done(out);};
+    reader.onerror=()=>toast("첨부파일을 읽는 중 오류가 발생했습니다.");
+    reader.readAsDataURL(file);
+  });
+}
 function submitCondolence(e){
   e.preventDefault();
   const f=new FormData(e.target);
-  const file=e.target.file.files[0];
-  if(file && file.size>5*1024*1024) return toast("첨부파일은 5MB 이하만 가능합니다.");
-  if(file && !(file.type.startsWith("image/") || file.type==="application/pdf")) return toast("PDF 또는 이미지 파일만 첨부 가능합니다.");
-  const saveRow=(attachment)=>{
+  const files=e.target.file && e.target.file.files ? e.target.file.files : [];
+  readBenefitFiles(files,(attachments)=>{
+    const first=attachments[0]||null;
     state.condolences.push({
       id:uid(),
       userId:user().id,
@@ -1103,8 +1146,9 @@ function submitCondolence(e){
       targetName:f.get("targetName"),
       targetBirth:f.get("targetBirth"),
       targetRelation:f.get("targetRelation"),
-      attachment:attachment||"",
-      fileName:file?file.name:"",
+      attachment:first?first.data:"",
+      attachments,
+      fileName:first?first.name:"",
       status:"접수",
       paymentStatus:"",
       createdAt:new Date().toLocaleString()
@@ -1112,14 +1156,7 @@ function submitCondolence(e){
     save();
     toast("복지신청이 접수되었습니다.");
     render();
-  };
-  if(file){
-    const reader=new FileReader();
-    reader.onload=()=>saveRow(reader.result);
-    reader.readAsDataURL(file);
-  }else{
-    saveRow("");
-  }
+  });
 }
 function eventPage(){
   const u=user();
@@ -1293,7 +1330,8 @@ function admin(){
     ["memberAdmin","회원/관리자"],
     ["auditLog","감사 로그"],
     ["aiAssistant","AI 비서"],
-    ["stats","통계"]
+    ["stats","통계"],
+    ["systemManage","고급관리"]
   ];
   let body="";
   if(adminTab==="adminDashboard") body=adminDashboard();
@@ -1307,8 +1345,9 @@ function admin(){
   if(adminTab==="auditLog") body=auditLogAdmin();
   if(adminTab==="aiAssistant") body=aiAssistantAdmin();
   if(adminTab==="stats") body=stats();
+  if(adminTab==="systemManage") body=systemManageAdmin();
   return layout(`<section class="section">
-    <div class="admin-titlebar"><div><h2>관리자 페이지</h2><p class="muted">현재 관리자: ${user().name}</p></div><div><button class="secondary" onclick="exportCSV()">Excel용 CSV</button> <button class="danger" onclick="resetData()">초기화</button></div></div>
+    <div class="admin-titlebar"><div><h2>관리자 페이지</h2><p class="muted">현재 관리자: ${user().name}</p></div><div><button class="secondary" onclick="exportCSV()">Excel용 CSV</button></div></div>
     <div class="admin-shell">
       <aside class="admin-side">${tabs.map(t=>`<button class="${adminTab===t[0]?'active':''}" onclick="adminTab='${t[0]}';render()">${t[1]}</button>`).join("")}</aside>
       <main class="admin-main">${body}</main>
@@ -1316,7 +1355,37 @@ function admin(){
   </section>`);
 }
 
-function kakaoReadyPanel(){return `<div class="panel"><p class="muted">카카오 실제 연동은 보류 상태입니다. 현재는 승인/반려 시 웹 알림과 카카오 발송대기 데이터만 생성합니다.</p><div class="grid3"><div class="kpi-card"><small>웹 알림</small><strong>${(state.notifications||[]).length}</strong></div><div class="kpi-card"><small>카카오 발송대기</small><strong>${(state.kakaoOutbox||[]).length}</strong></div><div class="kpi-card"><small>예약 타임라인</small><strong>${(state.reservationTimeline||[]).length}</strong></div></div></div>`;}
+function kakaoReadyPanel(){
+  const n=state.notificationSettings||{};
+  return `<div class="panel"><p class="muted">카카오 실제 발송은 다음 버전에서 활성화합니다. V26에서는 API 정보 입력, 테스트, 사용 ON/OFF 구조까지만 준비합니다.</p>
+  <form class="form" onsubmit="saveKakaoSettings(event)">
+    <label>업체/Provider<input name="kakaoProvider" value="${n.kakaoProvider||''}" placeholder="예: Solapi, NHN Cloud"></label>
+    <label>발신 프로필/채널 키<input name="kakaoSenderKey" value="${n.kakaoSenderKey||''}" placeholder="발신 프로필 키"></label>
+    <label>API KEY<input name="kakaoApiKey" value="${n.kakaoApiKey||''}" placeholder="API KEY"></label>
+    <label>SECRET KEY<input type="password" name="kakaoSecretKey" value="${n.kakaoSecretKey||''}" placeholder="SECRET KEY"></label>
+    <label class="wide">사용여부<select name="kakaoEnabled"><option value="false" ${!n.kakaoEnabled?'selected':''}>비활성</option><option value="true" ${n.kakaoEnabled?'selected':''}>활성 준비</option></select></label>
+    <button>카카오 설정 저장</button><button type="button" class="secondary" onclick="testKakaoSettings()">연동 테스트</button><button type="button" onclick="toggleKakaoEnabled()">카카오 알림 사용/중지</button>
+  </form>
+  <div class="grid3" style="margin-top:14px"><div class="kpi-card"><small>웹 알림</small><strong>${(state.notifications||[]).length}</strong></div><div class="kpi-card"><small>카카오 발송대기</small><strong>${(state.kakaoOutbox||[]).length}</strong></div><div class="kpi-card"><small>연동상태</small><strong>${n.kakaoEnabled?'활성 준비':'미연동'}</strong></div></div></div>`;
+}
+function saveKakaoSettings(e){
+  e.preventDefault();
+  const f=new FormData(e.target);
+  state.notificationSettings={...(state.notificationSettings||{}),kakaoProvider:f.get("kakaoProvider"),kakaoSenderKey:f.get("kakaoSenderKey"),kakaoApiKey:f.get("kakaoApiKey"),kakaoSecretKey:f.get("kakaoSecretKey"),kakaoEnabled:f.get("kakaoEnabled")==="true"};
+  save();toast("카카오 연동 준비 설정이 저장되었습니다.");render();
+}
+function testKakaoSettings(){
+  const n=state.notificationSettings||{};
+  if(!n.kakaoProvider||!n.kakaoSenderKey||!n.kakaoApiKey||!n.kakaoSecretKey) return toast("업체, 발신 프로필, API KEY, SECRET KEY를 모두 입력해 주세요.");
+  toast("연동 테스트 준비 완료: 실제 발송은 다음 버전에서 활성화됩니다.");
+}
+function toggleKakaoEnabled(){
+  const n=state.notificationSettings||{};
+  if(!n.kakaoProvider||!n.kakaoSenderKey||!n.kakaoApiKey||!n.kakaoSecretKey) return toast("카카오 정보를 먼저 입력해 주세요.");
+  n.kakaoEnabled=!n.kakaoEnabled;
+  state.notificationSettings=n;
+  save();toast(n.kakaoEnabled?"카카오 알림 활성 준비 상태입니다.":"카카오 알림을 비활성화했습니다.");render();
+}
 function adminDashboard(){
   const s=adminQuickStats();
   return `<div class="group-box">
@@ -1427,7 +1496,7 @@ function stayAdminGroup(){
     <div class="group-section"><div class="subtle-title"><h3>숙소 예약 승인 현황</h3><span class="muted">복지몰·Google·Airbnb·수기예약 통합 현황</span></div>${adminBulkToolbar('reservations','복지몰 예약 내역','chkReservation')}${roomReservationUnifiedTable()}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소/계좌/메일 기본 설정</h3></div>${settingsAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소 기본/최대 인원 설정</h3><span class="muted">직원 예약 화면과 인원 제한에 바로 반영</span></div>${roomPeopleAdmin()}</div>
-    <div class="group-section"><div class="subtle-title"><h3>숙소 할인 조건 설정</h3></div>${policyAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사진 관리</h3></div>${roomPhotoAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사용 설명서</h3><span class="muted">승인된 예약자만 홈 화면에서 확인 가능</span></div>${roomManualAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>예약 관리</h3></div>${roomBlockAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>성수기/주말 요금 설정</h3></div>${seasonRateAdmin()}</div>
+    <div class="group-section"><div class="subtle-title"><h3>숙소 할인 조건 설정</h3></div>${policyAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사진 관리</h3></div>${roomPhotoAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사용 설명서</h3><span class="muted">승인된 예약자만 홈 화면에서 확인 가능</span></div>${roomManualAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>예약 차단 관리</h3></div>${roomBlockAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>성수기/주말 요금 설정</h3></div>${seasonRateAdmin()}</div>
   </div>`;
 }
 
@@ -1445,8 +1514,8 @@ function condolenceUserButtons(c){
   if(status==="승인" || status==="지급완료" || c.paymentStatus==="지급완료"){
     html+=`<button onclick="printCondolenceForm('${c.id}')">신청서 출력</button>`;
   }
-  if(c.attachment){
-    html+=`<button class="secondary" onclick="openAttachment('${c.attachment}')">증빙자료 출력</button>`;
+  if(attachmentList(c).length){
+    html+=attachmentPreviewLink(c);
   }
   return `<div class="actions">${html||"-"}</div>`;
 }
@@ -1479,8 +1548,8 @@ function condolenceAdminButtons(c){
   if(status==="지급완료" || c.paymentStatus==="지급완료"){
     html+=`<button onclick="printCondolenceForm('${c.id}')">신청서 출력</button>`;
   }
-  if(c.attachment){
-    html+=`<button class="secondary" onclick="openAttachment('${c.attachment}')">증빙자료 출력</button>`;
+  if(attachmentList(c).length){
+    html+=attachmentPreviewLink(c);
   }
   return `<div class="actions">${html||"-"}</div>`;
 }
@@ -2152,7 +2221,43 @@ function stats(){
   </div>`;
 }
 function exportCSV(){const rows=[["구분","신청자","부서","내용","일자","박수","금액","상태"]];state.reservations.forEach(r=>rows.push(["숙소예약",r.userName,r.dept,r.roomName,`${r.checkin}~${r.checkout}`,r.nights,r.amount||0,r.status]));state.condolences.forEach(r=>rows.push(["경조사",r.userName,r.dept,r.type,r.date,"",0,r.status]));const csv="\ufeff"+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="welfare_export.csv";a.click();}
-function resetData(){if(!confirm("데모 데이터를 초기화할까요?"))return;localStorage.removeItem("with_welfare_v5");localStorage.removeItem("with_session_v5");state=load();session=null;toast("초기화되었습니다.");render();}
+function downloadBackupBeforeReset(){
+  const data=JSON.stringify({version:"V26",createdAt:new Date().toLocaleString(),state},null,2);
+  downloadTextFile("with_welfare_backup_"+new Date().toISOString().slice(0,10)+".json",data,"application/json;charset=utf-8");
+}
+function systemManageAdmin(){
+  const logs=state.resetLogs||[];
+  return `<div class="group-box"><div class="group-section"><h3>고급관리 / 시스템 초기화</h3><p class="muted">위험한 기능입니다. RESET 입력, 관리자 비밀번호 확인, 자동 백업 후에만 초기화됩니다.</p>
+  <div class="panel"><button class="secondary" onclick="downloadBackupBeforeReset()">현재 데이터 백업 다운로드</button><hr><form class="form" onsubmit="protectedResetData(event)">
+    <label>확인 문구<input name="resetText" placeholder="RESET" required></label>
+    <label>관리자 비밀번호<input type="password" name="adminPassword" required></label>
+    <label class="wide">초기화 범위<select name="resetScope"><option value="demo">신청/예약 운영자료 초기화(회원 유지)</option><option value="all">전체 초기화</option></select></label>
+    <button class="danger wide">보호 초기화 실행</button>
+  </form></div></div><div class="group-section"><h3>초기화 로그</h3>${logs.length?`<table class="table"><thead><tr><th>일시</th><th>관리자</th><th>범위</th></tr></thead><tbody>${logs.map(l=>`<tr><td>${l.createdAt}</td><td>${l.adminName}</td><td>${l.scope}</td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">초기화 로그가 없습니다.</div>`}</div></div>`;
+}
+function protectedResetData(e){
+  e.preventDefault();
+  const f=new FormData(e.target);
+  if(String(f.get("resetText")||"").trim()!=="RESET") return toast("RESET을 정확히 입력해 주세요.");
+  const admin=(state.admins||[]).find(a=>a.id===session.id);
+  if(!admin || admin.password!==f.get("adminPassword")) return toast("관리자 비밀번호가 일치하지 않습니다.");
+  if(!confirm("백업 파일을 먼저 다운로드한 후 초기화를 진행합니다. 계속할까요?")) return;
+  downloadBackupBeforeReset();
+  const scope=f.get("resetScope");
+  const log={id:uid(),createdAt:new Date().toLocaleString(),adminName:admin.name,scope:scope==="all"?"전체 초기화":"운영자료 초기화"};
+  if(scope==="all"){
+    localStorage.removeItem("with_welfare_v5");
+    localStorage.removeItem("with_session_v5");
+    state=load();
+    state.resetLogs=[log];
+    session=null;
+  }else{
+    state.reservations=[];state.externalReservations=[];state.condolences=[];state.eventApplications=[];state.notifications=[];state.kakaoOutbox=[];state.reservationTimeline=[];state.auditLogs=[];
+    state.resetLogs=(state.resetLogs||[]);state.resetLogs.unshift(log);
+  }
+  save();toast("보호 초기화가 완료되었습니다.");render();
+}
+function resetData(){adminTab="systemManage";toast("초기화는 고급관리에서 비밀번호 확인 후 가능합니다.");render();}
 
 function discountAdminGroup(){
   ensureDiscountData();
