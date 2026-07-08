@@ -791,7 +791,8 @@ function calendar(){
       const src=String(r.sourceName||"외부").toLowerCase();
       const cls=src.includes("google")?"googleM":src.includes("airbnb")?"airbnbM":"externalM";
       const displaySource=src.includes("google")?"Google":src.includes("airbnb")?"Airbnb":(r.sourceName||"외부");
-      const label=isAdmin?`${rr?rr.name:"숙소"} ${displaySource}${r.memo?` · ${r.memo}`:""}`:`${rr?rr.name:"숙소"} 예약불가`;
+      const guest=externalReservationGuest(r);
+      const label=isAdmin?`${rr?rr.name:"숙소"} ${displaySource}${guest&&guest!=="-"?` · ${guest}`:""}`:`${rr?rr.name:"숙소"} 예약불가`;
       marks.push(`<span class="mark ${cls}" title="${isAdmin?`출처: ${displaySource} / 내용: ${r.memo||""} / 기간: ${r.start}~${r.end}`:""}">${label}</span>`);
     });
     (state.roomBlocks||[]).filter(b=>ds>=b.start&&ds<b.end).forEach(b=>{const rr=state.rooms.find(x=>x.id===b.roomId);marks.push(`<span class="mark blockM">${rr?rr.name:"숙소"} 차단</span>`);});
@@ -1296,7 +1297,7 @@ function updateMenu(key){
 }
 function stayAdminGroup(){
   return `<div class="group-box">
-    <div class="group-section"><div class="subtle-title"><h3>숙소 예약 승인 현황</h3><span class="muted">승인/반려 처리</span></div>${adminBulkToolbar('reservations','숙소 예약 내역','chkReservation')}${reservationTable(state.reservations,true)}</div>
+    <div class="group-section"><div class="subtle-title"><h3>숙소 예약 승인 현황</h3><span class="muted">복지몰·Google·Airbnb·수기예약 통합 현황</span></div>${adminBulkToolbar('reservations','복지몰 예약 내역','chkReservation')}${roomReservationUnifiedTable()}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소/계좌/메일 기본 설정</h3></div>${settingsAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소 기본/최대 인원 설정</h3><span class="muted">직원 예약 화면과 인원 제한에 바로 반영</span></div>${roomPeopleAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>숙소 할인 조건 설정</h3></div>${policyAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사진 관리</h3></div>${roomPhotoAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>숙소 사용 설명서</h3><span class="muted">승인된 예약자만 홈 화면에서 확인 가능</span></div>${roomManualAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>예약 차단 관리</h3></div>${roomBlockAdmin()}</div><div class="group-section"><div class="subtle-title"><h3>성수기/주말 요금 설정</h3></div>${seasonRateAdmin()}</div>
@@ -1788,6 +1789,47 @@ function deleteRoomPhoto(roomId,photoId){
   render();
 }
 function sourceBadgeClass(name){const s=String(name||"").toLowerCase();if(s.includes("google"))return "google";if(s.includes("airbnb"))return "airbnb";if(s.includes("수기")||s.includes("관리자"))return "manual";return "external";}
+function reservationSourceLabel(r){
+  if(!r)return "복지몰";
+  if(r.kind==="external"){
+    const src=String(r.sourceName||"외부");
+    if(src.toLowerCase().includes("google"))return "Google";
+    if(src.toLowerCase().includes("airbnb"))return "Airbnb";
+    if(src.includes("수기")||src.includes("관리자"))return "수기예약";
+    return src||"외부";
+  }
+  if(r.source==="manual")return "수기예약";
+  return "복지몰";
+}
+function reservationSourceBadge(label){return `<span class="source-badge ${sourceBadgeClass(label)}">${label}</span>`;}
+function externalReservationGuest(r){
+  const memo=String(r.memo||"").trim();
+  if(!memo)return "-";
+  return memo.replace(/\s*\([^)]*\)\s*$/,"") || memo;
+}
+function unifiedRoomReservationRows(){
+  const regular=(state.reservations||[]).map(r=>({kind:"reservation",...r,sortStart:r.checkin||""}));
+  const external=(state.externalReservations||[]).map(r=>{
+    const room=state.rooms.find(x=>x.id===r.roomId)||{};
+    return {kind:"external",id:r.id,roomId:r.roomId,roomName:room.name||"숙소",userName:externalReservationGuest(r),dept:reservationSourceLabel({kind:"external",...r}),checkin:r.start,checkout:r.end,nights:calcNights(r.start,r.end),people:"-",useType:"외부예약",amount:0,status:"확정",checkinStatus:"",sourceName:r.sourceName||"외부",memo:r.memo||"",sortStart:r.start||"",createdAt:r.createdAt||""};
+  });
+  return regular.concat(external).sort((a,b)=>String(b.sortStart||"").localeCompare(String(a.sortStart||""))||String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+}
+function roomReservationUnifiedTable(){
+  const rows=unifiedRoomReservationRows();
+  if(!rows.length)return `<div class="panel empty">예약 내역이 없습니다.</div>`;
+  return `<table class="table room-status-table"><thead><tr><th>선택</th><th>출처</th><th>숙소</th><th>예약자/메모</th><th>기간</th><th>구분/금액</th><th>인원</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows.map(r=>{
+    const isExt=r.kind==="external";
+    const label=reservationSourceLabel(r);
+    const period=`${r.checkin||""} ~ ${r.checkout||""}<br><b>${r.nights||calcNights(r.checkin,r.checkout)}박</b>`;
+    const amount=isExt?`외부예약<br><span class="muted">${r.memo||""}</span>`:`${r.useType||"-"}<br>${r.amount?`<b>${money(r.amount)}</b><br><span class="muted">${r.bankInfo||""}</span>`:"무료"}`;
+    const people=isExt?"-":`${r.people||"-"}명${r.extraPeople?`<br><span class="muted">추가 ${r.extraPeople}명</span>`:""}`;
+    const status=isExt?`<span class="status 승인">확정</span><br><span class="muted">외부 일정</span>`:`<span class="status ${r.status}">${r.status}</span><br><span class="muted">${r.source==="manual"?"수기예약":(r.status==="승인"?(r.checkinStatus||"이용대기"):"")}</span>`;
+    const actions=isExt?`<button class="danger" onclick="deleteExternalReservation('${r.id}')">삭제</button>`:adminReservationButtons(r);
+    return `<tr><td>${isExt?"":rowCheck('chkReservation',r.id)}</td><td>${reservationSourceBadge(label)}</td><td>${r.roomName||""}</td><td>${r.userName||"-"}<br><span class="muted">${isExt?(r.sourceName||"외부"):(r.dept||"")}</span></td><td>${period}</td><td>${amount}</td><td>${people}</td><td>${status}</td><td class="actions">${actions}</td></tr>`;
+  }).join("")}</tbody></table>`;
+}
+
 function roomBlockAdmin(){return `<div class="panel"><h3>관리자 직접 예약 추가</h3><p class="muted">전화/수기 접수, 임직원 외 사용 등 관리자가 직접 등록하는 예약입니다. 캘린더에는 관리자 등록 색상으로 표시됩니다.</p><form class="form" onsubmit="addAdminReservation(event)"><label>숙소<select name="roomId">${state.rooms.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}</select></label><label>예약자명<input name="userName" required placeholder="예: 외부손님, 대표님 지인"></label><label>체크인<input type="date" name="checkin" required></label><label>체크아웃<input type="date" name="checkout" required></label><label>인원<input type="number" name="people" min="1" value="1" required></label><label>연락처<input name="phone"></label><label class="wide">메모<input name="memo" placeholder="관리자 직접 등록 사유"></label><button class="wide">관리자 예약 추가</button></form></div>
 <div class="panel" style="margin-top:12px"><h3>외부 예약 직접 등록</h3><p class="muted">Airbnb, 야놀자, 전화예약 등 외부에서 확정된 예약일을 차단용으로 등록합니다.</p><form class="form" onsubmit="addExternalReservation(event)"><label>숙소<select name="roomId">${state.rooms.map(r=>`<option value="${r.id}">${r.name}</option>`).join("")}</select></label><label>외부채널<input name="sourceName" required placeholder="예: Airbnb"></label><label>시작일<input type="date" name="start" required></label><label>종료일<input type="date" name="end" required></label><label class="wide">메모<input name="memo" placeholder="예약번호, 고객명 등"></label><button class="wide">외부 예약 추가</button></form></div>
 <table class="table" style="margin-top:12px"><thead><tr><th>숙소</th><th>기간</th><th>출처</th><th>예약자/메모</th><th>관리</th></tr></thead><tbody>${(state.externalReservations||[]).map(b=>`<tr><td>${(state.rooms.find(r=>r.id===b.roomId)||{}).name}</td><td>${b.start} ~ ${b.end}</td><td><span class="source-badge ${sourceBadgeClass(b.sourceName)}">${b.sourceName||"외부"}</span></td><td>${b.memo||""}</td><td><button class="danger" onclick="deleteExternalReservation('${b.id}')">삭제</button></td></tr>`).join("")||`<tr><td colspan="5" class="empty">외부 예약 등록 내역이 없습니다.</td></tr>`}</tbody></table>
