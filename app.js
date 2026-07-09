@@ -1,13 +1,57 @@
 window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
 const app=document.getElementById("app");
 const V16_CLOUD_READY=true;
-const CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
+const DEFAULT_CLOUD_CONFIG={
+  SUPABASE_URL:"https://eqromjnhqkecmpkherjb.supabase.co",
+  SUPABASE_ANON_KEY:"sb_publishable_trTC1dyramnwWtd4XV9eqw_zRWEAY47",
+  SEND_EMAIL_FUNCTION:"send-email"
+};
+const CLOUD_CONFIG={...DEFAULT_CLOUD_CONFIG,...(window.WITH_WELFARE_CONFIG||{})};
 function normalizeSupabaseUrl(url){
   return String(url||"").trim().replace(/\/rest\/v1\/?$/,"").replace(/\/+$/,"");
 }
 const SUPABASE_URL=normalizeSupabaseUrl(CLOUD_CONFIG.SUPABASE_URL);
 const SUPABASE_KEY=String(CLOUD_CONFIG.SUPABASE_ANON_KEY||"").trim();
-const supabaseClient=(SUPABASE_URL&&SUPABASE_KEY&&window.supabase)?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+function createRestSupabaseClient(url,key){
+  if(!url||!key) return null;
+  const base=normalizeSupabaseUrl(url);
+  const headers={apikey:key,Authorization:`Bearer ${key}`,"Content-Type":"application/json"};
+  async function parseResponse(res){
+    const text=await res.text();
+    let body=null;
+    try{body=text?JSON.parse(text):null;}catch(e){body=text;}
+    if(!res.ok){
+      const message=(body&&body.message)||String(body||res.statusText||"Supabase 오류");
+      return {data:null,error:{message,status:res.status,details:body}};
+    }
+    return {data:body,error:null};
+  }
+  return {from(table){
+    return {
+      async upsert(row){
+        const res=await fetch(`${base}/rest/v1/${encodeURIComponent(table)}`,{method:"POST",headers:{...headers,Prefer:"resolution=merge-duplicates,return=representation"},body:JSON.stringify(row)});
+        return parseResponse(res);
+      },
+      select(cols){
+        const q={cols:cols||"*",filters:[]};
+        return {eq(col,val){q.filters.push([col,val]);return this;},async maybeSingle(){
+          const params=new URLSearchParams();
+          params.set("select",q.cols);
+          q.filters.forEach(([c,v])=>params.set(c,`eq.${v}`));
+          params.set("limit","1");
+          const res=await fetch(`${base}/rest/v1/${encodeURIComponent(table)}?${params.toString()}`,{headers});
+          const out=await parseResponse(res);
+          if(out.error) return out;
+          const arr=Array.isArray(out.data)?out.data:[];
+          return {data:arr[0]||null,error:null};
+        }};
+      }
+    };
+  }};
+}
+const supabaseClient=(SUPABASE_URL&&SUPABASE_KEY)?(
+  (window.supabase&&window.supabase.createClient)?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):createRestSupabaseClient(SUPABASE_URL,SUPABASE_KEY)
+):null;
 let cloudReady=false;
 let cloudHydrating=false;
 let cloudSaveTimer=null;
@@ -356,7 +400,7 @@ async function initCloudSync(){
     cloudStatus="Supabase 연결 실패";
     v16DedupeState();
     render();
-    toast("Supabase 연결 실패: URL/키/RLS를 확인해 주세요.");
+    toast("Supabase 연결 실패: "+(err.message||"URL/키/RLS 또는 네트워크를 확인해 주세요."));
   }
 }
 
