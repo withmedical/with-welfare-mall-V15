@@ -361,3 +361,22 @@ button{min-height:42px}
 .entry-card h2{font-size:31px;line-height:1.18;margin:4px 0 16px}
 .entry-card button:disabled{background:#cbd5e1;color:#667085;cursor:not-allowed;box-shadow:none}
 @media(max-width:760px){.v27-login h1.gateway-title{font-size:24px}.entry-card h2{font-size:25px}}
+
+
+/* V27.7.1 mobile toast fix */
+.toast{
+  left:50%;
+  right:auto;
+  bottom:calc(env(safe-area-inset-bottom, 0px) + 92px);
+  transform:translateX(-50%);
+  max-width:min(92vw,520px);
+  width:max-content;
+  z-index:9999;
+  white-space:pre-line;
+  text-align:left;
+}
+.toast-info{background:#172033;color:#fff}
+.toast-success{background:#087443;color:#fff}
+.toast-error{background:#b42318;color:#fff}
+@media(min-width:921px){.toast{left:auto;right:22px;bottom:22px;transform:none;max-width:520px}}
+@media(max-width:520px){.toast{width:calc(100vw - 32px);bottom:calc(env(safe-area-inset-bottom, 0px) + 96px)}}

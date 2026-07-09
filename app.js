@@ -396,11 +396,12 @@ async function initCloudSync(){
     }
   }catch(err){
     cloudHydrating=false;
-    console.error("Supabase 연결 실패",err);
-    cloudStatus="Supabase 연결 실패";
+    console.error("Supabase 초기 연결 확인 실패",err);
+    cloudStatus="Supabase 연결 확인 필요";
     v16DedupeState();
     render();
-    toast("Supabase 연결 실패: "+(err.message||"URL/키/RLS 또는 네트워크를 확인해 주세요."));
+    // 모바일 Safari/카카오 인앱에서 1차 연결 체크가 늦게 실패했다가 이후 REST 저장/조회가 정상 동작하는 경우가 있어
+    // 초기 진입 시에는 사용자에게 실패 토스트를 띄우지 않습니다. 실제 저장/새로고침 실패 시에만 오류를 안내합니다.
   }
 }
 
@@ -482,7 +483,13 @@ function finalHotfixCleanState(){
 
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function money(n){return Number(n||0).toLocaleString()+"원";}
-function toast(msg){const t=document.createElement("div");t.className="toast";t.innerText=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+function toast(msg,type="info"){
+  const t=document.createElement("div");
+  t.className="toast toast-"+type;
+  t.innerText=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),3200);
+}
 function user(){
   if(!session)return null;
   if(session.role==="admin")return state.admins.find(a=>a.id===session.id);
@@ -1999,6 +2006,7 @@ function memberAdminGroup(){
   return `<div class="group-box">
     <div class="group-section"><div class="subtle-title"><h3>회원 직접 추가</h3><span class="muted">관리자가 직원 계정을 직접 생성</span></div>${employeeAddForm()}</div>
     <div class="group-section"><div class="subtle-title"><h3>회원 가입 승인/삭제</h3></div>${userAdmin()}</div>
+    <div class="group-section"><div class="subtle-title"><h3>일반 회원 가입/삭제</h3><span class="muted">일반 고객은 승인 없이 가입되며, 관리자는 조회/삭제만 할 수 있습니다.</span></div>${customerAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>비밀번호 초기화 요청</h3></div>${passwordResetAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>관리자 계정 관리</h3></div>${adminManage()}</div>
   </div>`;
@@ -2085,7 +2093,7 @@ function setUserStatus(id,status){state.users.find(u=>u.id===id).status=status;s
 function customerAdmin(){
   const rows=state.customers||[];
   if(!rows.length)return`<div class="panel empty">일반 회원 가입 내역이 없습니다.</div>`;
-  return`<table class="table"><thead><tr><th>이름</th><th>생년월일</th><th>전화번호</th><th>가입일</th><th>개인정보 상태</th><th>관리</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${c.name||""}</td><td>${c.birth||""}</td><td>${c.phone||""}</td><td>${c.createdAt||""}</td><td>${c.purgedAt?`폐기완료<br><span class="muted">${c.purgedAt}</span>`:"보관중"}</td><td><button class="danger" onclick="deleteCustomer('${c.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`;
+  return`<table class="table"><thead><tr><th>이름</th><th>생년월일</th><th>전화번호</th><th>가입일</th><th>카카오 동의</th><th>개인정보 상태</th><th>관리</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${c.name||""}</td><td>${c.birth||""}</td><td>${c.phone||""}</td><td>${c.createdAt||""}</td><td>${c.kakaoAgree?"동의":"미동의"}</td><td>${c.purgedAt?`폐기완료<br><span class="muted">${c.purgedAt}</span>`:"보관중"}</td><td><button class="danger" onclick="deleteCustomer('${c.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`;
 }
 function deleteCustomer(id){
   const c=(state.customers||[]).find(x=>x.id===id);
