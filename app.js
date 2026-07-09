@@ -1,5 +1,6 @@
 window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
 const app=document.getElementById("app");
+const APP_VERSION="V27.6 RC3 FINAL";
 const V16_CLOUD_READY=true;
 let CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
 function normalizeSupabaseUrl(url){
@@ -196,7 +197,7 @@ function migrate(){
     changed=true;
   }
   state.events=(state.events||seed.events).map(e=>({id:e.id||uid(), title:e.title, date:e.date, limit:e.limit||0, memo:e.memo||"", isOpen:e.isOpen!==false}));
-  state.discounts=(state.discounts||seed.discounts).map(d=>({id:d.id||uid(), category:d.category||"", title:d.title||"", rate:d.rate||"", method:d.method||"", link:d.link||""}));
+  state.discounts=(state.discounts||seed.discounts).map(d=>({id:d.id||uid(), category:d.category||"", title:d.title||"", rate:d.rate||"", method:d.method||"", link:d.link||"", applyEnabled:!!d.applyEnabled, limitCount:Number(d.limitCount||0)}));
   state.notices=(state.notices||seed.notices).map(n=>({id:n.id||uid(), title:n.title||"", important:!!n.important, body:n.body||"", views:n.views||0}));
   
   if(state.condolenceTypes){
@@ -329,6 +330,13 @@ async function saveCloudState(){
   }
 }
 async function saveCriticalData(successMsg){
+  // RC3: Safari/iPhone에서도 성공 표시 전에 저장 결과를 먼저 확인한다.
+  try{ localStorage.setItem("with_welfare_v5", JSON.stringify(state)); }
+  catch(localErr){
+    console.error("로컬 저장 실패", localErr);
+    toast("저장 실패: Safari 저장공간/개인정보 설정을 확인해 주세요.");
+    return false;
+  }
   await loadRuntimeConfig();
   if(!supabaseClient && isOperationalHost()){
     toast("서버 연결 실패: Supabase 설정을 읽지 못했습니다. 새로고침 후 다시 시도해 주세요.");
@@ -340,12 +348,11 @@ async function saveCriticalData(successMsg){
   if(supabaseClient){
     const ok=await saveCloudState();
     if(!ok){
-      toast("운영 데이터 저장 실패: "+supabaseErrorMessage(err));
+      toast("운영 데이터 저장 실패: "+cloudStatus);
       return false;
     }
-    try{localStorage.setItem("with_welfare_v5",JSON.stringify(state));}catch(e){}
   }else{
-    save();
+    scheduleCloudSave();
   }
   if(successMsg) toast(successMsg);
   return true;
@@ -543,7 +550,7 @@ async function signup(e){
   if(ok){loginTab="user";render();}
 }
 
-function requestPasswordReset(e){
+async function requestPasswordReset(e){
   e.preventDefault();
   const f=new FormData(e.target);
   const phone=onlyDigits(f.get("phone"));
@@ -553,10 +560,8 @@ function requestPasswordReset(e){
   if(!state.passwordResetRequests) state.passwordResetRequests=[];
   if(state.passwordResetRequests.some(r=>r.userId===u.id&&r.status==="요청")) return toast("이미 처리 대기 중인 초기화 요청이 있습니다.");
   state.passwordResetRequests.push({id:uid(),userId:u.id,userName:u.name,dept:u.dept||"",phone:u.phone,status:"요청",createdAt:new Date().toLocaleString(),processedAt:""});
-  save();
-  toast("비밀번호 초기화 요청이 접수되었습니다.");
-  loginTab="user";
-  render();
+  const ok=await saveCriticalData("비밀번호 초기화 요청이 접수되었습니다.");
+  if(ok){loginTab="user";render();}
 }
 
 function loginCustomer(e){
@@ -1606,6 +1611,7 @@ function admin(){
     ["stayAdmin","숙소 관리"],
     ["condolenceAdmin","복지신청 관리"],
     ["eventAdminGroup","이벤트 관리"],
+    ["discountAdminGroup","할인관리"],
     ["noticeAdminGroup","공지 관리"],
     ["memberAdmin","회원/관리자"],
     ["notificationAdmin","알림설정"],
@@ -1620,6 +1626,7 @@ function admin(){
   if(adminTab==="stayAdmin") body=stayAdminGroup();
   if(adminTab==="condolenceAdmin") body=condolenceAdminGroup();
   if(adminTab==="eventAdminGroup") body=eventAdminGroup();
+  if(adminTab==="discountAdminGroup") body=discountAdminGroup();
   
   if(adminTab==="noticeAdminGroup") body=noticeAdminGroup();
   if(adminTab==="memberAdmin") body=memberAdminGroup();
@@ -2048,6 +2055,23 @@ function passwordResetAdmin(){
   ${rows.map(r=>`<tr><td>${r.name||r.userName||""}<br><span class="muted">${r.dept||""}</span></td><td>${r.phone||""}</td><td>${r.createdAt||""}</td><td><span class="status ${r.status||"접수"}">${r.status||"접수"}</span></td><td>${r.tempPassword||""}</td><td class="actions">${r.status==="처리완료"?"-":`<button onclick="completePasswordReset('${r.id}')">처리완료</button><button class="danger" onclick="deleteOne('passwordResetRequests','${r.id}')">삭제</button>`}</td></tr>`).join("")}
   </tbody></table></div>`;
 }
+
+async function completePasswordReset(id){
+  const r=(state.passwordResetRequests||[]).find(x=>x.id===id);
+  if(!r) return toast("초기화 요청을 찾을 수 없습니다.");
+  const u=(state.users||[]).find(x=>x.id===r.userId) || (state.users||[]).find(x=>onlyDigits(x.phone)===onlyDigits(r.phone)&&x.name===(r.userName||r.name));
+  if(!u) return toast("회원 정보를 찾을 수 없습니다.");
+  const tempPassword="with"+String(Math.floor(1000+Math.random()*9000));
+  u.password=tempPassword;
+  r.status="처리완료";
+  r.tempPassword=tempPassword;
+  r.processedAt=new Date().toLocaleString();
+  state.resetLogs=(state.resetLogs||[]);
+  state.resetLogs.unshift({id:uid(),userId:u.id,userName:u.name,processedAt:r.processedAt,adminId:(user()||{}).id||""});
+  const ok=await saveCriticalData("비밀번호가 임시 비밀번호로 초기화되었습니다.");
+  if(ok) render();
+}
+
 function approvePasswordReset(id){
   const r=state.passwordResetRequests.find(x=>x.id===id);
   const pw=document.getElementById("tmp_"+id).value;
@@ -2582,7 +2606,7 @@ window.updateEstimate=updateEstimate;
 window.moveMonth=moveMonth;
 
 function render(){
-  finalHotfixCleanState();purgeExpiredCustomerPrivacy();if(!session)return loginView();if(!user()){logout();return;}if(user().role==="customer"&&page==="home")page="stay";if(!ensureEnabledPage(page)){page=user().role==="customer"?"stay":"home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount"){page="home";app.innerHTML=home();}if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="notifications")app.innerHTML=notificationsPage();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
+  finalHotfixCleanState();purgeExpiredCustomerPrivacy();if(!session)return loginView();if(!user()){logout();return;}if(user().role==="customer"&&page==="home")page="stay";if(!ensureEnabledPage(page)){page=user().role==="customer"?"stay":"home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount")app.innerHTML=discount();if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="notifications")app.innerHTML=notificationsPage();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
 
 function attachGlobalHandlers(){
   document.removeEventListener("click",reserveDelegatedClick,true);
