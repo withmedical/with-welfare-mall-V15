@@ -10,6 +10,7 @@ const SUPABASE_KEY=String(CLOUD_CONFIG.SUPABASE_ANON_KEY||"").trim();
 const supabaseClient=(SUPABASE_URL&&SUPABASE_KEY&&window.supabase)?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
 let cloudReady=false;
 let cloudHydrating=false;
+let pendingCloudSave=false;
 let cloudSaveTimer=null;
 let cloudStatus="확인 중";
 const today=new Date().toISOString().slice(0,10);
@@ -257,7 +258,8 @@ function v16DedupeState(){
 }
 
 function scheduleCloudSave(){
-  if(!supabaseClient || !cloudReady || cloudHydrating) return;
+  if(!supabaseClient || cloudHydrating) return;
+  if(!cloudReady){ pendingCloudSave=true; return; }
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer=setTimeout(saveCloudState,500);
 }
@@ -301,6 +303,7 @@ async function initCloudSync(){
       cloudHydrating=false;
       cloudReady=true;
       cloudStatus="Supabase 연결 완료";
+      if(pendingCloudSave){ pendingCloudSave=false; await saveCloudState(); }
       render();
       toast("Supabase 연결 완료");
     }else{
@@ -318,6 +321,35 @@ async function initCloudSync(){
     v16DedupeState();
     render();
     toast("Supabase 연결 실패: URL/키/RLS를 확인해 주세요.");
+  }
+}
+
+async function refreshCloudState(showToast=true){
+  if(!supabaseClient){ if(showToast) toast("Supabase 미연결: 로컬 데이터만 사용 중입니다."); return false; }
+  try{
+    const {data,error}=await supabaseClient.from("app_state").select("data,updated_at").eq("id","main").maybeSingle();
+    if(error) throw error;
+    if(data && data.data){
+      cloudHydrating=true;
+      state=data.data;
+      v16DedupeState();
+      migrate();
+      localStorage.setItem("with_welfare_v5",JSON.stringify(state));
+      cloudHydrating=false;
+      cloudReady=true;
+      cloudStatus="Supabase 새로고침 완료";
+      if(showToast) toast("운영 데이터를 새로고침했습니다.");
+      render();
+      return true;
+    }
+    if(showToast) toast("Supabase에 저장된 운영 데이터가 없습니다.");
+    return false;
+  }catch(err){
+    cloudHydrating=false;
+    console.error("운영 데이터 새로고침 실패",err);
+    cloudStatus="Supabase 새로고침 실패";
+    if(showToast) toast("운영 데이터 새로고침 실패");
+    return false;
   }
 }
 
@@ -1302,7 +1334,7 @@ function submitCondolence(e){
   const files=e.target.file && e.target.file.files ? e.target.file.files : [];
   readBenefitFiles(files,(attachments)=>{
     const first=attachments[0]||null;
-    state.condolences.push({
+    const item={
       id:uid(),
       userId:user().id,
       userName:f.get("userName"),
@@ -1322,9 +1354,13 @@ function submitCondolence(e){
       status:"접수",
       paymentStatus:"",
       createdAt:new Date().toLocaleString()
-    });
+    };
+    state.condolences.push(item);
+    addWebNotification("admin","복지신청 접수",`${item.userName||""} / ${item.type||""} / ${money(item.amount||0)}`,item.id);
+    queueKakaoNotification("","benefit_received","복지신청 접수",`${item.userName||""}님의 ${item.type||""} 신청이 접수되었습니다.`,item.id);
     save();
-    toast("복지신청이 접수되었습니다.");
+    if(supabaseClient && cloudReady) saveCloudState();
+    toast("복지신청이 접수되었습니다. 관리자 화면에 반영됩니다.");
     render();
   });
 }
@@ -1345,10 +1381,11 @@ function cancelEventApplication(id){
   const a=(state.eventApplications||[]).find(x=>x.id===id && x.userId===user().id);
   if(!a) return toast("신청 내역을 찾을 수 없습니다.");
   if(!canUserCancelStatus(a.status)) return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");
-  if(!confirm("이벤트 신청을 취소할까요?")) return;
-  a.status="취소";
-  a.canceledAt=new Date().toLocaleString();
-  save();toast("이벤트 신청이 취소되었습니다.");render();
+  if(!confirm("이벤트 신청을 취소할까요? 취소 시 신청 기록이 삭제됩니다.")) return;
+  state.eventApplications=(state.eventApplications||[]).filter(x=>x.id!==id);
+  save();
+  toast("이벤트 신청이 취소되고 기록이 삭제되었습니다.");
+  render();
 }
 
 function discount(){
@@ -1523,7 +1560,7 @@ function admin(){
   if(adminTab==="stats") body=stats();
   if(adminTab==="systemManage") body=systemManageAdmin();
   return layout(`<section class="section">
-    <div class="admin-titlebar"><div><h2>관리자 페이지</h2><p class="muted">현재 관리자: ${user().name}</p></div><div><button class="secondary" onclick="exportCSV()">Excel용 CSV</button></div></div>
+    <div class="admin-titlebar"><div><h2>관리자 페이지</h2><p class="muted">현재 관리자: ${user().name}</p></div><div><button class="secondary" onclick="refreshCloudState(true)">운영데이터 새로고침</button><button class="secondary" onclick="exportCSV()">Excel용 CSV</button></div></div>
     <div class="admin-shell">
       <aside class="admin-side">${tabs.map(t=>`<button class="${adminTab===t[0]?'active':''}" onclick="adminTab='${t[0]}';render()">${t[1]}</button>`).join("")}</aside>
       <main class="admin-main">${body}</main>
@@ -1700,11 +1737,11 @@ function cancelCondolenceRequest(id){
   const c=(state.condolences||[]).find(x=>x.id===id && x.userId===user().id);
   if(!c) return toast("신청 내역을 찾을 수 없습니다.");
   if(!canUserCancelStatus(c.status)) return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");
-  if(!confirm("복지신청을 취소할까요?")) return;
-  c.status="취소";
-  c.canceledAt=new Date().toLocaleString();
+  if(!confirm("복지신청을 취소할까요? 취소 시 신청 기록이 삭제됩니다.")) return;
+  state.condolences=(state.condolences||[]).filter(x=>x.id!==id);
   save();
-  toast("복지신청이 취소되었습니다.");
+  if(supabaseClient && cloudReady) saveCloudState();
+  toast("복지신청이 취소되고 기록이 삭제되었습니다.");
   render();
 }
 function condolenceAdminButtons(c){
