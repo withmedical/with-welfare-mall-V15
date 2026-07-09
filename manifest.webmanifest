@@ -1,0 +1,14 @@
+{
+  "name": "WITH Welfare Mall",
+  "short_name": "WITH 복지몰",
+  "description": "사계펜션 예약 및 임직원 복지몰",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

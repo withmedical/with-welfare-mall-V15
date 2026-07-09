@@ -1,13 +1,58 @@
 window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
 const app=document.getElementById("app");
 const V16_CLOUD_READY=true;
-const CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
+let CLOUD_CONFIG=window.WITH_WELFARE_CONFIG||{};
 function normalizeSupabaseUrl(url){
   return String(url||"").trim().replace(/\/rest\/v1\/?$/,"").replace(/\/+$/,"");
 }
-const SUPABASE_URL=normalizeSupabaseUrl(CLOUD_CONFIG.SUPABASE_URL);
-const SUPABASE_KEY=String(CLOUD_CONFIG.SUPABASE_ANON_KEY||"").trim();
-const supabaseClient=(SUPABASE_URL&&SUPABASE_KEY&&window.supabase)?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+let SUPABASE_URL="";
+let SUPABASE_KEY="";
+let supabaseClient=null;
+let runtimeConfigLoaded=false;
+let runtimeConfigError="";
+function pickConfigValue(obj,...keys){
+  for(const k of keys){
+    if(obj && obj[k]!=null && String(obj[k]).trim()) return String(obj[k]).trim();
+  }
+  return "";
+}
+function configureSupabaseClient(){
+  SUPABASE_URL=normalizeSupabaseUrl(pickConfigValue(CLOUD_CONFIG,"SUPABASE_URL","supabaseUrl","supabase_url"));
+  SUPABASE_KEY=pickConfigValue(CLOUD_CONFIG,"SUPABASE_ANON_KEY","supabaseAnonKey","supabase_anon_key","anonKey");
+  supabaseClient=(SUPABASE_URL&&SUPABASE_KEY&&window.supabase)?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
+    auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
+  }):null;
+  return !!supabaseClient;
+}
+async function loadRuntimeConfig(){
+  if(runtimeConfigLoaded) return !!supabaseClient;
+  runtimeConfigError="";
+  configureSupabaseClient();
+  if(!supabaseClient){
+    try{
+      const res=await fetch('/config?t='+Date.now(),{cache:'no-store',headers:{'Accept':'application/json'}});
+      if(!res.ok) throw new Error('config HTTP '+res.status);
+      const cfg=await res.json();
+      CLOUD_CONFIG={...CLOUD_CONFIG,...cfg};
+    }catch(err){
+      runtimeConfigError=String(err&&err.message?err.message:err);
+      console.warn('원격 환경설정 로드 실패',err);
+    }
+  }
+  runtimeConfigLoaded=true;
+  return configureSupabaseClient();
+}
+function supabaseErrorMessage(err){
+  const msg=String((err&&err.message)||err||'알 수 없는 오류');
+  if(runtimeConfigError) return msg+' / config: '+runtimeConfigError;
+  return msg;
+}
+function isOperationalHost(){
+  return /pages\.dev|with-welfare|withmedical/i.test(location.hostname) && !/localhost|127\.0\.0\.1/i.test(location.hostname);
+}
+function isKakaoInApp(){
+  return /KAKAOTALK/i.test(navigator.userAgent||'');
+}
 let cloudReady=false;
 let cloudHydrating=false;
 let pendingCloudSave=false;
@@ -79,7 +124,7 @@ let page="home", loginTab="gateway", adminTab="adminDashboard", calDate=new Date
 
 function load(){const s=localStorage.getItem("with_welfare_v5"); if(s) return JSON.parse(s); localStorage.setItem("with_welfare_v5",JSON.stringify(seed)); return JSON.parse(JSON.stringify(seed));}
 function save(){
-  localStorage.setItem("with_welfare_v5",JSON.stringify(state));
+  try{localStorage.setItem("with_welfare_v5",JSON.stringify(state));}catch(e){console.warn("로컬 저장 실패",e);}
   scheduleCloudSave();
 }
 function migrate(){
@@ -265,7 +310,7 @@ function scheduleCloudSave(){
 }
 
 async function saveCloudState(){
-  if(!supabaseClient || cloudHydrating) return;
+  if(!supabaseClient || cloudHydrating) return true;
   try{
     v16DedupeState();
     const payload=JSON.parse(JSON.stringify(state));
@@ -276,19 +321,45 @@ async function saveCloudState(){
     });
     if(error) throw error;
     cloudStatus="Supabase 저장 완료";
+    return true;
   }catch(err){
     console.error("Supabase 저장 실패",err);
     cloudStatus="Supabase 저장 실패";
+    return false;
   }
+}
+async function saveCriticalData(successMsg){
+  await loadRuntimeConfig();
+  if(!supabaseClient && isOperationalHost()){
+    toast("서버 연결 실패: Supabase 설정을 읽지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    return false;
+  }
+  if(supabaseClient && !cloudReady){
+    try{ await initCloudSync(); }catch(e){ console.error(e); }
+  }
+  if(supabaseClient){
+    const ok=await saveCloudState();
+    if(!ok){
+      toast("운영 데이터 저장 실패: "+supabaseErrorMessage(err));
+      return false;
+    }
+    try{localStorage.setItem("with_welfare_v5",JSON.stringify(state));}catch(e){}
+  }else{
+    save();
+  }
+  if(successMsg) toast(successMsg);
+  return true;
 }
 
 async function initCloudSync(){
   finalHotfixCleanState();
+  await loadRuntimeConfig();
   if(!supabaseClient){
     cloudStatus="Supabase 미연결";
     v16DedupeState();
     render();
-    toast("Supabase 미연결: 로컬 테스트 모드입니다.");
+    if(isOperationalHost()) toast("서버 연결 실패: URL/키/RLS 또는 네트워크를 확인해 주세요.");
+    else toast("Supabase 미연결: 로컬 테스트 모드입니다.");
     return;
   }
   try{
@@ -320,7 +391,7 @@ async function initCloudSync(){
     cloudStatus="Supabase 연결 실패";
     v16DedupeState();
     render();
-    toast("Supabase 연결 실패: URL/키/RLS를 확인해 주세요.");
+    toast("Supabase 연결 실패: "+supabaseErrorMessage(err));
   }
 }
 
@@ -456,7 +527,7 @@ function loginUser(e){
   render();
 }
 function loginAdmin(e){e.preventDefault();const f=new FormData(e.target);const a=state.admins.find(x=>x.loginId===f.get("id")&&x.password===f.get("password"));if(!a)return toast("관리자 ID 또는 비밀번호가 일치하지 않습니다.");session={id:a.id,role:"admin"};localStorage.setItem("with_session_v5",JSON.stringify(session));render();}
-function signup(e){
+async function signup(e){
   e.preventDefault();
   const f=new FormData(e.target);
   const phone=onlyDigits(f.get("phone"));
@@ -468,10 +539,8 @@ function signup(e){
   if(!isKoreanAdultByBirth(f.get("birth"))) return toast("대한민국 기준 성년(만 19세 이상)만 일반고객 회원가입이 가능합니다.");
   if(state.users.some(u=>onlyDigits(u.phone)===phone || (empNo && u.empNo===empNo))) return toast("이미 등록된 휴대폰 번호 또는 사원번호입니다.");
   state.users.push({id:uid(),name:f.get("name"),empNo,birth:f.get("birth"),phone,password,role:"user",dept:f.get("dept")||"",status:"가입대기",createdAt:new Date().toLocaleString()});
-  save();
-  toast("회원가입 신청 완료. 관리자 승인 후 로그인 가능합니다.");
-  loginTab="user";
-  render();
+  const ok=await saveCriticalData("회원가입 신청 완료. 관리자 승인 후 로그인 가능합니다.");
+  if(ok){loginTab="user";render();}
 }
 
 function requestPasswordReset(e){
@@ -502,7 +571,7 @@ function loginCustomer(e){
   localStorage.setItem("with_session_v5",JSON.stringify(session));
   render();
 }
-function signupCustomer(e){
+async function signupCustomer(e){
   e.preventDefault();
   const f=new FormData(e.target);
   const phone=onlyDigits(f.get("phone"));
@@ -515,10 +584,8 @@ function signupCustomer(e){
   if((state.customers||[]).some(c=>onlyDigits(c.phone)===phone&&!c.purgedAt)) return toast("이미 등록된 휴대폰 번호입니다.");
   const c={id:uid(),role:"customer",name:f.get("name").trim(),birth:f.get("birth"),phone,password,status:"가입완료",privacyAgree:true,purgeAgree:true,ageAgree:true,refundAgree:true,kakaoAgree:!!f.get("kakaoAgree"),createdAt:new Date().toLocaleString(),purgeAfterCheckoutDays:7};
   state.customers.push(c);
-  save();
-  toast("일반고객 회원가입이 완료되었습니다. 로그인해 주세요.");
-  loginTab="customerLogin";
-  render();
+  const ok=await saveCriticalData("일반고객 회원가입이 완료되었습니다. 로그인해 주세요.");
+  if(ok){loginTab="customerLogin";render();}
 }
 function privacySimpleTerms(){return `㈜위드메디컬은 사계펜션 예약 및 이용 안내를 위해 이름, 생년월일, 휴대전화번호를 수집·이용합니다. 수집 정보는 숙소 예약 확인, 본인 확인, 예약 안내 및 이용 관련 연락에만 사용되며, 숙소 이용 완료 후 7일 이내 안전하게 폐기합니다. 동의하지 않을 경우 숙소 예약 서비스를 이용할 수 없습니다.`;}
 function toggleCustomerAllAgree(checked){
@@ -1086,7 +1153,7 @@ function showReserve(roomId){
 }
 
 function updateEstimate(form){const nights=calcNights(form.checkin.value,form.checkout.value);const useType=form.useType.value;const price=calcPrice(useType,nights,form.checkin.value,form.checkout.value);const seasonBase=(form.checkin.value&&form.checkout.value)?calcBaseBySeason(form.checkin.value,form.checkout.value):state.settings.nightlyPrice*(nights||0);let txt="";if(useType==="일반고객"){txt=`일반고객: 시즌요금 기준 예상 입금액 ${money(price)} · 입금계좌 ${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`;}else{const p=getPolicy(useType);txt=p.paymentRequired?`${p.name}: 시즌요금 ${money(seasonBase)} 기준 할인율 ${p.discountRate}% 적용 · 예상 입금액 ${money(price)} · 입금계좌 ${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`:`${p.name}: 무료 적용 조건입니다. 예상 ${nights||0}박`;}document.getElementById("estimate").innerText=txt;}
-function submitReservation(e,roomId){
+async function submitReservation(e,roomId){
   e.preventDefault();
   const f=new FormData(e.target);
   const checkin=f.get("checkin"),checkout=f.get("checkout"),people=Number(f.get("people")),useType=f.get("useType");
@@ -1116,7 +1183,8 @@ function submitReservation(e,roomId){
 입금기한: ${paymentDueAt}
 환불정책: ${newReservation.refundPolicySnapshot}`,newReservation.id);
   audit("숙소 예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);
-  save();toast(policy.paymentRequired?"예약이 접수되었습니다. 입금 확인 후 확정됩니다.":"예약 신청이 접수되었습니다.");setPage("stay");
+  const ok=await saveCriticalData(policy.paymentRequired?"예약이 접수되었습니다. 입금 확인 후 확정됩니다.":"예약 신청이 접수되었습니다.");
+  if(ok) setPage("stay");
 }
 function reservationTable(rows,admin){
   if(!rows.length)return`<div class="panel empty">예약 내역이 없습니다.</div>`;
@@ -1332,7 +1400,7 @@ function submitCondolence(e){
   e.preventDefault();
   const f=new FormData(e.target);
   const files=e.target.file && e.target.file.files ? e.target.file.files : [];
-  readBenefitFiles(files,(attachments)=>{
+  readBenefitFiles(files,async (attachments)=>{
     const first=attachments[0]||null;
     const item={
       id:uid(),
@@ -1358,10 +1426,8 @@ function submitCondolence(e){
     state.condolences.push(item);
     addWebNotification("admin","복지신청 접수",`${item.userName||""} / ${item.type||""} / ${money(item.amount||0)}`,item.id);
     queueKakaoNotification("","benefit_received","복지신청 접수",`${item.userName||""}님의 ${item.type||""} 신청이 접수되었습니다.`,item.id);
-    save();
-    if(supabaseClient && cloudReady) saveCloudState();
-    toast("복지신청이 접수되었습니다. 관리자 화면에 반영됩니다.");
-    render();
+    const ok=await saveCriticalData("복지신청이 접수되었습니다. 관리자 화면에 반영됩니다.");
+    if(ok) render();
   });
 }
 function eventPage(){
@@ -1370,22 +1436,23 @@ function eventPage(){
   return layout(`<section class="section"><h2>사내 이벤트</h2><div class="grid2">${state.events.map(ev=>{const isApply=ev.isOpen!==false;const cnt=state.eventApplications.filter(a=>a.eventId===ev.id&&a.status!=="취소").length;const applied=state.eventApplications.find(a=>a.eventId===ev.id&&a.userId===u.id&&a.status!=="취소");return`<div class="card"><span class="badge">${ev.date}</span><span class="badge">${isApply?"신청":"일반"}</span><h3>${ev.title}</h3><p class="muted">${ev.memo}</p>${isApply?`<p>신청 ${cnt}/${ev.limit}명</p>${applied?`<p><span class="status ${applied.status||"접수완료"}">${applied.status||"접수완료"}</span></p>${canUserCancelStatus(applied.status)?`<button class="danger" onclick="cancelEventApplication('${applied.id}')">신청취소</button>`:`<button class="gray" disabled>신청 완료</button>`}`:`<button onclick="applyEvent('${ev.id}')">참석 신청</button>`}`:`<p class="muted">일반 안내 이벤트입니다.</p>`}</div>`}).join("")}</div></section>
   <section class="section"><h2>내 이벤트 신청 이력</h2>${genericTable(myApps,"eventApplications",false)}</section>`);
 }
-function applyEvent(id){
+async function applyEvent(id){
   const ev=state.events.find(e=>e.id===id);
   const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;
   if(cnt>=ev.limit)return toast("마감되었습니다.");
   state.eventApplications.push({id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString()});
-  save();toast("이벤트 신청 완료");render();
+  addWebNotification("admin","이벤트 신청 접수",`${user().name} / ${ev.title}`,id);
+  const ok=await saveCriticalData("이벤트 신청 완료");
+  if(ok) render();
 }
-function cancelEventApplication(id){
+async function cancelEventApplication(id){
   const a=(state.eventApplications||[]).find(x=>x.id===id && x.userId===user().id);
   if(!a) return toast("신청 내역을 찾을 수 없습니다.");
   if(!canUserCancelStatus(a.status)) return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");
   if(!confirm("이벤트 신청을 취소할까요? 취소 시 신청 기록이 삭제됩니다.")) return;
   state.eventApplications=(state.eventApplications||[]).filter(x=>x.id!==id);
-  save();
-  toast("이벤트 신청이 취소되고 기록이 삭제되었습니다.");
-  render();
+  const ok=await saveCriticalData("이벤트 신청이 취소되고 기록이 삭제되었습니다.");
+  if(ok) render();
 }
 
 function discount(){
@@ -1527,9 +1594,11 @@ function safeAdminSection(fnName){
 
 function visibleNotifications(){const u=user();return (state.notifications||[]).filter(n=>n.userId==="admin"&&u.role==="admin" || n.userId===u.id || n.userId==="all");}
 function unreadNotificationCount(){return visibleNotifications().filter(n=>!n.read).length;}
-function notificationsPage(){const rows=visibleNotifications();return layout(`<section class="section"><div class="admin-titlebar"><div><h2>알림센터</h2><p class="muted">복지몰 내부 알림 원본입니다. 카카오 연동 시 이 알림을 기준으로 발송됩니다.</p></div><button class="secondary" onclick="markAllNotificationsRead()">모두 읽음</button></div>${rows.length?`<table class="table"><thead><tr><th>상태</th><th>제목</th><th>내용</th><th>일시</th><th>관리</th></tr></thead><tbody>${rows.map(n=>`<tr><td>${n.read?"읽음":"<b>안읽음</b>"}</td><td>${n.title}</td><td>${n.message||""}</td><td>${n.createdAt||""}</td><td><button onclick="markNotificationRead('${n.id}')">읽음</button></td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">알림이 없습니다.</div>`}</section>`);}
+function notificationsPage(){const rows=visibleNotifications();return layout(`<section class="section"><div class="admin-titlebar"><div><h2>알림센터</h2><p class="muted">복지몰 내부 알림 원본입니다. 카카오 연동 시 이 알림을 기준으로 발송됩니다.</p></div><div class="actions"><button class="secondary" onclick="markAllNotificationsRead()">모두 읽음</button><button class="danger" onclick="deleteAllVisibleNotifications()">전체 삭제</button></div></div>${rows.length?`<table class="table"><thead><tr><th>상태</th><th>제목</th><th>내용</th><th>일시</th><th>관리</th></tr></thead><tbody>${rows.map(n=>`<tr><td>${n.read?"읽음":"<b>안읽음</b>"}</td><td>${n.title}</td><td>${n.message||""}</td><td>${n.createdAt||""}</td><td class="actions"><button onclick="markNotificationRead('${n.id}')">읽음</button><button class="danger" onclick="deleteNotification('${n.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">알림이 없습니다.</div>`}</section>`);}
 function markNotificationRead(id){const n=(state.notifications||[]).find(x=>x.id===id);if(n)n.read=true;save();render();}
 function markAllNotificationsRead(){visibleNotifications().forEach(n=>n.read=true);save();toast("알림을 모두 읽음 처리했습니다.");render();}
+function deleteNotification(id){state.notifications=(state.notifications||[]).filter(n=>n.id!==id);save();toast("알림을 삭제했습니다.");render();}
+function deleteAllVisibleNotifications(){const ids=new Set(visibleNotifications().map(n=>n.id));if(!ids.size)return toast("삭제할 알림이 없습니다.");if(!confirm("현재 보이는 알림을 모두 삭제할까요?"))return;state.notifications=(state.notifications||[]).filter(n=>!ids.has(n.id));save();toast("알림을 전체 삭제했습니다.");render();}
 function admin(){
   const tabs=[
     ["adminDashboard","대시보드"],
@@ -1581,7 +1650,9 @@ function kakaoReadyPanel(){
   </form>
   <div class="grid3" style="margin-top:14px"><div class="kpi-card"><small>웹 알림</small><strong>${(state.notifications||[]).length}</strong></div><div class="kpi-card"><small>카카오 발송대기</small><strong>${(state.kakaoOutbox||[]).length}</strong></div><div class="kpi-card"><small>연동상태</small><strong>${n.kakaoEnabled?'활성 준비':'미연동'}</strong></div></div></div>`;
 }
-function notificationAdminGroup(){return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 연동 준비</h3><span class="muted">V28 실제 연동 전 설정 관리</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>카카오 발송 대기 이력</h3><span class="muted">실제 발송 전 준비 데이터</span></div>${(state.kakaoOutbox||[]).length?`<table class="table"><thead><tr><th>대상</th><th>종류</th><th>제목</th><th>상태</th><th>일시</th></tr></thead><tbody>${state.kakaoOutbox.map(k=>`<tr><td>${k.targetPhone||"-"}</td><td>${k.kind||""}</td><td>${k.title||""}<br><span class="muted">${k.message||""}</span></td><td>${k.status||"발송대기"}</td><td>${k.createdAt||""}</td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">발송 대기 이력이 없습니다.</div>`}</div></div>`;}
+function notificationAdminGroup(){return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 연동 준비</h3><span class="muted">V28 실제 연동 전 설정 관리</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>카카오 발송 대기 이력</h3><span class="muted">실제 발송 전 준비 데이터</span></div><div class="actions" style="margin-bottom:8px"><button class="danger" onclick="clearKakaoOutbox()">전체삭제</button></div>${(state.kakaoOutbox||[]).length?`<table class="table"><thead><tr><th>대상</th><th>종류</th><th>제목</th><th>상태</th><th>일시</th><th>관리</th></tr></thead><tbody>${state.kakaoOutbox.map(k=>`<tr><td>${k.targetPhone||"-"}</td><td>${k.kind||""}</td><td>${k.title||""}<br><span class="muted">${k.message||""}</span></td><td>${k.status||"발송대기"}</td><td>${k.createdAt||""}</td><td><button class="danger" onclick="deleteKakaoOutbox('${k.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">발송 대기 이력이 없습니다.</div>`}</div></div>`;}
+function deleteKakaoOutbox(id){state.kakaoOutbox=(state.kakaoOutbox||[]).filter(k=>k.id!==id);save();toast("카카오 발송 대기 이력을 삭제했습니다.");render();}
+function clearKakaoOutbox(){if(!(state.kakaoOutbox||[]).length)return toast("삭제할 이력이 없습니다.");if(!confirm("카카오 발송 대기 이력을 모두 삭제할까요?"))return;state.kakaoOutbox=[];save();toast("카카오 발송 대기 이력을 전체 삭제했습니다.");render();}
 function saveKakaoSettings(e){
   e.preventDefault();
   const f=new FormData(e.target);
@@ -1733,16 +1804,14 @@ function condolenceUserButtons(c){
   }
   return `<div class="actions">${html||"-"}</div>`;
 }
-function cancelCondolenceRequest(id){
+async function cancelCondolenceRequest(id){
   const c=(state.condolences||[]).find(x=>x.id===id && x.userId===user().id);
   if(!c) return toast("신청 내역을 찾을 수 없습니다.");
   if(!canUserCancelStatus(c.status)) return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");
   if(!confirm("복지신청을 취소할까요? 취소 시 신청 기록이 삭제됩니다.")) return;
   state.condolences=(state.condolences||[]).filter(x=>x.id!==id);
-  save();
-  if(supabaseClient && cloudReady) saveCloudState();
-  toast("복지신청이 취소되고 기록이 삭제되었습니다.");
-  render();
+  const ok=await saveCriticalData("복지신청이 취소되고 기록이 삭제되었습니다.");
+  if(ok) render();
 }
 function condolenceAdminButtons(c){
   let html="";
@@ -1939,6 +2008,7 @@ function memberAdminGroup(){
   return `<div class="group-box">
     <div class="group-section"><div class="subtle-title"><h3>회원 직접 추가</h3><span class="muted">관리자가 직원 계정을 직접 생성</span></div>${employeeAddForm()}</div>
     <div class="group-section"><div class="subtle-title"><h3>회원 가입 승인/삭제</h3></div>${userAdmin()}</div>
+    <div class="group-section"><div class="subtle-title"><h3>일반회원 가입/삭제</h3><span class="muted">일반고객은 승인 없이 가입되며, 숙소 예약 기능만 사용합니다.</span></div>${customerAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>비밀번호 초기화 요청</h3></div>${passwordResetAdmin()}</div>
     <div class="group-section"><div class="subtle-title"><h3>관리자 계정 관리</h3></div>${adminManage()}</div>
   </div>`;
@@ -2008,6 +2078,21 @@ function userAdmin(){
   return`<table class="table"><thead><tr><th>이름</th><th>사원번호</th><th>생년월일</th><th>전화번호</th><th>부서</th><th>상태</th><th>관리</th></tr></thead><tbody>${state.users.map(u=>`<tr><td>${u.name}</td><td>${u.empNo}</td><td>${u.birth}</td><td>${u.phone}</td><td>${u.dept||""}</td><td><span class="status ${u.status}">${u.status}</span></td><td class="actions">${u.status==="가입대기"?`<button onclick="setUserStatus('${u.id}','가입승인')">승인</button><button class="danger" onclick="setUserStatus('${u.id}','가입반려')">반려</button>`:""}<button class="danger" onclick="deleteUser('${u.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`;
 }
 function setUserStatus(id,status){state.users.find(u=>u.id===id).status=status;save();toast(status+" 처리");render();}
+function customerAdmin(){
+  const rows=state.customers||[];
+  if(!rows.length) return `<div class="panel empty">일반회원 가입 내역이 없습니다.</div>`;
+  return `<table class="table"><thead><tr><th>이름</th><th>생년월일</th><th>휴대폰</th><th>가입일</th><th>개인정보</th><th>관리</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${c.name||"-"}</td><td>${c.birth||"-"}</td><td>${c.phone||"-"}</td><td>${c.createdAt||""}</td><td>${c.purgedAt?`폐기완료<br><span class="muted">${c.purgedAt}</span>`:`보관중<br><span class="muted">이용 완료 후 7일 이내 폐기</span>`}</td><td class="actions"><button class="danger" onclick="deleteCustomer('${c.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`;
+}
+async function deleteCustomer(id){
+  const c=(state.customers||[]).find(x=>x.id===id);
+  if(!c) return toast("일반회원 정보를 찾을 수 없습니다.");
+  const active=(state.reservations||[]).some(r=>r.userType==="customer"&&r.userId===id&&!["취소","반려"].includes(r.status||"")&&r.checkinStatus!=="체크아웃 완료");
+  if(active) return toast("진행 중인 예약이 있는 일반회원은 삭제할 수 없습니다.");
+  if(!confirm("해당 일반회원을 삭제할까요?")) return;
+  state.customers=(state.customers||[]).filter(x=>x.id!==id);
+  const ok=await saveCriticalData("일반회원이 삭제되었습니다.");
+  if(ok) render();
+}
 function refundPolicyToText(){return (state.settings.refundPolicy||[]).slice().sort((a,b)=>Number(b.days)-Number(a.days)).map(r=>`${r.days}:${r.rate}`).join(", ");}
 function parseRefundPolicyText(text){return String(text||"").split(/[,\n]/).map(x=>x.trim()).filter(Boolean).map((x,i)=>{const m=x.match(/(\d+)\s*[:=]\s*(\d+)/);return m?{id:"rp_"+i+"_"+Date.now(),days:Number(m[1]),rate:Number(m[2])}:null;}).filter(Boolean).sort((a,b)=>Number(b.days)-Number(a.days));}
 function settingsAdmin(){
@@ -2537,8 +2622,15 @@ function expirePendingReservations(){
   });
   if(changed) save();
 }
-attachGlobalHandlers();
-expirePendingReservations();
-notifyCheckoutOverdue();
-render();
-initCloudSync();
+async function bootApp(){
+  attachGlobalHandlers();
+  expirePendingReservations();
+  notifyCheckoutOverdue();
+  render();
+  if(isKakaoInApp()) setTimeout(()=>toast("카카오톡 브라우저에서는 저장이 불안정할 수 있습니다. 우측 상단 메뉴에서 Safari로 열어 사용해 주세요."),500);
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker.js?v=27.6-rc').catch(err=>console.warn('PWA 등록 실패',err)));
+  }
+  await initCloudSync();
+}
+bootApp();
