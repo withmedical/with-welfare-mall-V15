@@ -120,9 +120,27 @@ migrate();
 let session=JSON.parse(localStorage.getItem("with_session_v5")||"null");
 let page="home", loginTab="gateway", adminTab="adminDashboard", calDate=new Date();
 
-function load(){const s=localStorage.getItem("with_welfare_v5"); if(s) return JSON.parse(s); localStorage.setItem("with_welfare_v5",JSON.stringify(seed)); return JSON.parse(JSON.stringify(seed));}
+function operationalKeys(){return ["reservations","condolences","eventApplications","notifications","kakaoOutbox"];}
+function appStatePayload(){
+  const payload=JSON.parse(JSON.stringify(state));
+  operationalKeys().forEach(k=>delete payload[k]);
+  return payload;
+}
+function safeLocalSnapshot(){
+  const payload=appStatePayload();
+  payload.reservations=[];payload.condolences=[];payload.eventApplications=[];payload.notifications=[];payload.kakaoOutbox=[];
+  return payload;
+}
+function safeLocalSave(){
+  try{localStorage.setItem("with_welfare_v5",JSON.stringify(safeLocalSnapshot()));return true;}
+  catch(err){console.warn("localStorage 저장 생략",err);try{localStorage.removeItem("with_welfare_v5");}catch(e){}return false;}
+}
+function load(){
+  try{const s=localStorage.getItem("with_welfare_v5"); if(s) return {...JSON.parse(JSON.stringify(seed)),...JSON.parse(s)};}catch(err){console.warn("로컬 캐시 무시",err);}
+  safeLocalSave(); return JSON.parse(JSON.stringify(seed));
+}
 function save(){
-  localStorage.setItem("with_welfare_v5",JSON.stringify(state));
+  safeLocalSave();
   scheduleCloudSave();
 }
 function migrate(){
@@ -307,10 +325,10 @@ function scheduleCloudSave(){
 }
 
 async function saveCloudState(){
-  if(!supabaseClient || cloudHydrating) return;
+  if(!supabaseClient || cloudHydrating) return false;
   try{
     v16DedupeState();
-    const payload=JSON.parse(JSON.stringify(state));
+    const payload=appStatePayload();
     const {error}=await supabaseClient.from("app_state").upsert({
       id:"main",
       data:payload,
@@ -318,9 +336,11 @@ async function saveCloudState(){
     });
     if(error) throw error;
     cloudStatus="Supabase 저장 완료";
+    return true;
   }catch(err){
     console.error("Supabase 저장 실패",err);
     cloudStatus="Supabase 저장 실패";
+    return false;
   }
 }
 
@@ -339,70 +359,29 @@ async function forceCloudSaveNow(label){
   }
 }
 async function refreshOperationalData(){
-  if(!supabaseClient) return toast("Supabase가 연결되어 있지 않습니다.");
   try{
-    const {data,error}=await supabaseClient.from("app_state").select("data,updated_at").eq("id","main").maybeSingle();
-    if(error) throw error;
-    if(data && data.data){
-      cloudHydrating=true;
-      state=data.data;
-      v16DedupeState();
-      migrate();
-      localStorage.setItem("with_welfare_v5",JSON.stringify(state));
-      cloudHydrating=false;
-      cloudStatus="운영데이터 새로고침 완료";
-      toast("운영데이터를 새로고침했습니다.");
-      render();
-    }else{
-      toast("불러올 운영데이터가 없습니다.");
-    }
-  }catch(err){
-    cloudHydrating=false;
-    console.error("운영데이터 새로고침 실패",err);
-    toast("운영데이터 새로고침 실패: "+(err.message||"오류"));
-  }
+    setOperationBusy(true,"운영데이터를 서버에서 불러오는 중입니다.");
+    await loadOperationalData();
+    cloudStatus="운영데이터 새로고침 완료";
+    toast("운영데이터를 새로고침했습니다.");render();
+  }catch(err){console.error("운영데이터 새로고침 실패",err);toast("운영데이터 새로고침 실패: "+(err.message||"오류"));}
+  finally{setOperationBusy(false);}
 }
 
 async function initCloudSync(){
   finalHotfixCleanState();
-  if(!supabaseClient){
-    cloudStatus="Supabase 미연결";
-    v16DedupeState();
-    render();
-    toast("Supabase 미연결: 로컬 테스트 모드입니다.");
-    return;
-  }
+  let legacy=null;
   try{
-    const {data,error}=await supabaseClient.from("app_state").select("data,updated_at").eq("id","main").maybeSingle();
-    if(error) throw error;
-    if(data && data.data && Object.keys(data.data).length){
-      cloudHydrating=true;
-      state=data.data;
-      v16DedupeState();
-      migrate();
-      localStorage.setItem("with_welfare_v5",JSON.stringify(state));
-      cloudHydrating=false;
-      cloudReady=true;
-      cloudStatus="Supabase 연결 완료";
-      render();
-      toast("Supabase 연결 완료");
-    }else{
-      v16DedupeState();
-      cloudReady=true;
-      cloudStatus="초기 데이터 저장";
-      await saveCloudState();
-      render();
-      toast("초기 데이터를 Supabase에 저장했습니다.");
+    if(supabaseClient){
+      const {data,error}=await supabaseClient.from("app_state").select("data,updated_at").eq("id","main").maybeSingle();
+      if(error)throw error;
+      if(data&&data.data&&Object.keys(data.data).length){legacy=data.data;cloudHydrating=true;state={...state,...data.data};v16DedupeState();migrate();cloudHydrating=false;cloudReady=true;cloudStatus="설정 연결 완료";}
+      else{cloudReady=true;await saveCloudState();}
     }
-  }catch(err){
-    cloudHydrating=false;
-    console.error("Supabase 초기 연결 확인 실패",err);
-    cloudStatus="Supabase 연결 확인 필요";
-    v16DedupeState();
-    render();
-    // 모바일 Safari/카카오 인앱에서 1차 연결 체크가 늦게 실패했다가 이후 REST 저장/조회가 정상 동작하는 경우가 있어
-    // 초기 진입 시에는 사용자에게 실패 토스트를 띄우지 않습니다. 실제 저장/새로고침 실패 시에만 오류를 안내합니다.
-  }
+    await migrateOperationalDataIfNeeded(legacy||state);
+    await loadOperationalData();
+    cloudReady=true;cloudStatus="서버 데이터 연결 완료";render();
+  }catch(err){cloudHydrating=false;console.error("서버 초기화 실패",err);cloudStatus="서버 연결 확인 필요";v16DedupeState();render();toast("서버 연결 실패: "+(err.message||"오류"));}
 }
 
 function v16CloudStatusPanel(){
@@ -416,6 +395,66 @@ function v16CloudStatusPanel(){
   </div>`;
 }
 
+
+
+const SERVER_TYPES={reservations:"reservations",condolences:"benefits",eventApplications:"events",notifications:"notifications",kakaoOutbox:"kakao"};
+let operationBusy=false;
+function setOperationBusy(show,message){
+  operationBusy=!!show;
+  let el=document.getElementById("operationBusyOverlay");
+  if(show){
+    if(!el){el=document.createElement("div");el.id="operationBusyOverlay";el.className="operation-busy";document.body.appendChild(el);}
+    el.innerHTML=`<div class="operation-busy-card"><div class="spinner"></div><b>${message||"처리 중입니다."}</b><small>완료될 때까지 버튼을 다시 누르지 마세요.</small></div>`;
+  }else if(el){el.remove();}
+}
+async function serverApi(type,method="GET",options={}){
+  const url=new URL("/api/data",location.origin);url.searchParams.set("type",type);
+  if(options.id)url.searchParams.set("id",options.id);
+  if(options.userId)url.searchParams.set("userId",options.userId);
+  const res=await fetch(url,{method,headers:method==="GET"||method==="DELETE"?{}:{"content-type":"application/json"},body:method==="GET"||method==="DELETE"?undefined:JSON.stringify(options.body||{}) ,cache:"no-store"});
+  const data=await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
+  if(!res.ok||!data.ok)throw new Error(data.error||`서버 오류 ${res.status}`);
+  return data;
+}
+async function createServerRecord(stateKey,record){return serverApi(SERVER_TYPES[stateKey],"POST",{body:{record}});}
+async function patchServerRecord(stateKey,id,patch){return serverApi(SERVER_TYPES[stateKey],"PATCH",{body:{id,patch}});}
+async function deleteServerRecord(stateKey,id){return serverApi(SERVER_TYPES[stateKey],"DELETE",{id});}
+async function loadOperationalData(){
+  const pairs=Object.entries(SERVER_TYPES);
+  const results=await Promise.all(pairs.map(async([key,type])=>[key,(await serverApi(type,"GET")).records||[]]));
+  results.forEach(([key,rows])=>state[key]=rows);
+  safeLocalSave();
+  return true;
+}
+async function migrateOperationalDataIfNeeded(legacy){
+  for(const [key,type] of Object.entries(SERVER_TYPES)){
+    const current=(await serverApi(type,"GET")).records||[];
+    const oldRows=Array.isArray(legacy?.[key])?legacy[key]:[];
+    if(!current.length&&oldRows.length){for(const row of oldRows){try{await createServerRecord(key,row);}catch(err){console.warn("이전 데이터 이동 실패",key,row?.id,err);}}}
+  }
+}
+async function uploadBenefitFiles(applicationId,files){
+  const arr=Array.from(files||[]);if(arr.length>5)throw new Error("증빙자료는 최대 5장까지 첨부 가능합니다.");
+  const uploaded=[];
+  for(let i=0;i<arr.length;i++){
+    const file=arr[i];
+    if(file.size>5*1024*1024)throw new Error("첨부파일은 개별 5MB 이하만 가능합니다.");
+    if(!(file.type.startsWith("image/")||file.type==="application/pdf"))throw new Error("PDF 또는 이미지 파일만 첨부 가능합니다.");
+    setOperationBusy(true,`증빙자료 업로드 중 (${i+1}/${arr.length})`);
+    const fd=new FormData();fd.append("applicationId",applicationId);fd.append("file",file);
+    const res=await fetch("/api/benefit-files",{method:"POST",body:fd});const data=await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
+    if(!res.ok||!data.ok)throw new Error(data.error||"첨부파일 업로드 실패");
+    uploaded.push(data.file);
+  }
+  return uploaded;
+}
+async function markBenefitPrinted(id){
+  const c=(state.condolences||[]).find(x=>x.id===id);if(!c)return;
+  const deleteAfter=new Date(Date.now()+24*60*60*1000).toISOString();
+  const patch={printedAt:new Date().toLocaleString(),attachment_delete_after:deleteAfter};
+  await patchServerRecord("condolences",id,patch);Object.assign(c,patch);safeLocalSave();toast("출력 완료가 기록되었습니다. 증빙자료는 24시간 후 자동 삭제됩니다.");
+}
+window.markBenefitPrinted=markBenefitPrinted;
 
 function ensureDiscountData(){
   if(!state.discounts) state.discounts=[];
@@ -784,8 +823,8 @@ function makeMail(kind,to,subject,body,attachment){
 }
 function audit(action,detail){if(!state.auditLogs)state.auditLogs=[];state.auditLogs.unshift({id:uid(),actor:user()?user().name:"시스템",action,detail,createdAt:new Date().toLocaleString()});state.auditLogs=state.auditLogs.slice(0,300);}
 function addReservationTimeline(reservationId, action, detail){if(!state.reservationTimeline)state.reservationTimeline=[];state.reservationTimeline.unshift({id:uid(),reservationId,action,detail:detail||"",actor:user()?user().name:"시스템",createdAt:new Date().toLocaleString()});state.reservationTimeline=state.reservationTimeline.slice(0,500);}
-function queueKakaoNotification(targetPhone,kind,title,message,refId){if(!state.kakaoOutbox)state.kakaoOutbox=[];state.kakaoOutbox.unshift({id:uid(),targetPhone:targetPhone||"",kind,title,message,refId,status:"발송대기",createdAt:new Date().toLocaleString(),note:"카카오 실제 연동 전 준비 데이터"});}
-function addWebNotification(userId,title,message,refId){if(!state.notifications)state.notifications=[];state.notifications.unshift({id:uid(),userId:userId||"admin",title,message,refId,read:false,createdAt:new Date().toLocaleString()});state.notifications=state.notifications.slice(0,500);}
+function queueKakaoNotification(targetPhone,kind,title,message,refId){if(!state.kakaoOutbox)state.kakaoOutbox=[];const row={id:uid(),targetPhone:targetPhone||"",kind,title,message,refId,status:"발송대기",createdAt:new Date().toLocaleString(),createdAtIso:new Date().toISOString(),note:"카카오 실제 연동 전 준비 데이터"};state.kakaoOutbox.unshift(row);createServerRecord("kakaoOutbox",row).catch(err=>console.warn("카카오 대기이력 저장 실패",err));}
+function addWebNotification(userId,title,message,refId){if(!state.notifications)state.notifications=[];const row={id:uid(),userId:userId||"admin",title,message,refId,read:false,status:"미읽음",createdAt:new Date().toLocaleString(),createdAtIso:new Date().toISOString()};state.notifications.unshift(row);state.notifications=state.notifications.slice(0,500);createServerRecord("notifications",row).catch(err=>console.warn("알림 저장 실패",err));}
 function isBlocked(roomId,checkin,checkout){return (state.roomBlocks||[]).some(b=>b.roomId===roomId&&overlaps(checkin,checkout,b.start,b.end));}
 function dateList(checkin,checkout){const arr=[];let d=localDate(checkin),e=localDate(checkout);while(d<e){arr.push(fmtLocalDate(d));d.setDate(d.getDate()+1);}return arr;}
 function addHoursToNow(h){const d=new Date();d.setHours(d.getHours()+Number(h||24));return d.toLocaleString();}
@@ -836,23 +875,15 @@ function adminSelectAll(className, checked){
 function selectedIds(className){
   return Array.from(document.querySelectorAll("." + className + ":checked")).map(x=>x.value);
 }
-function deleteRowsByIds(key, ids, label){
-  if(!ids.length) return toast("삭제할 항목을 선택해 주세요.");
-  if(!confirm(`${label} ${ids.length}건을 삭제할까요? 삭제 후 복구할 수 없습니다.`)) return;
-  state[key]=(state[key]||[]).filter(x=>!ids.includes(x.id));
-  save();
-  toast("선택 항목이 삭제되었습니다.");
-  render();
+async function deleteRowsByIds(key,ids,label){
+  if(!ids.length)return toast("삭제할 항목을 선택해 주세요.");if(!confirm(`${label} ${ids.length}건을 삭제할까요? 삭제 후 복구할 수 없습니다.`))return;
+  try{setOperationBusy(true,"선택 데이터를 삭제 중입니다.");if(SERVER_TYPES[key])for(const id of ids)await deleteServerRecord(key,id);state[key]=(state[key]||[]).filter(x=>!ids.includes(x.id));safeLocalSave();setOperationBusy(false);toast("선택 항목이 삭제되었습니다.");render();}catch(err){setOperationBusy(false);toast("삭제 실패: "+(err.message||"오류"));}
 }
-function clearRows(key, label){
-  const count=(state[key]||[]).length;
-  if(!count) return toast("삭제할 내역이 없습니다.");
-  if(!confirm(`${label} 전체 ${count}건을 모두 삭제할까요? 삭제 후 복구할 수 없습니다.`)) return;
-  state[key]=[];
-  save();
-  toast(`${label} 전체 내역이 삭제되었습니다.`);
-  render();
+async function clearRows(key,label){
+  const rows=state[key]||[];if(!rows.length)return toast("삭제할 내역이 없습니다.");if(!confirm(`${label} 전체 ${rows.length}건을 모두 삭제할까요? 삭제 후 복구할 수 없습니다.`))return;
+  try{setOperationBusy(true,"전체 데이터를 삭제 중입니다.");if(SERVER_TYPES[key])for(const row of rows)await deleteServerRecord(key,row.id);state[key]=[];safeLocalSave();setOperationBusy(false);toast(`${label} 전체 내역이 삭제되었습니다.`);render();}catch(err){setOperationBusy(false);toast("전체삭제 실패: "+(err.message||"오류"));}
 }
+
 function adminBulkToolbar(key,label,className){
   return `<div class="bulk-toolbar">
     <button class="secondary" onclick="adminSelectAll('${className}',true)">전체선택</button>
@@ -883,77 +914,29 @@ function adminReservationButtons(r){
   return html||"-";
 }
 
-function confirmPayment(id){
-  const r=state.reservations.find(x=>x.id===id);
-  if(!r)return toast("예약 정보를 찾을 수 없습니다.");
-  r.status="승인";
-  r.paymentConfirmedAt=new Date().toLocaleString();
-  r.checkinStatus="이용대기";
-  addReservationTimeline(r.id,"입금 확인 및 예약 확정",`${r.userName||""} / ${r.roomName||""} / ${money(r.amount||0)}`);
-  addWebNotification(r.userId,"숙소 예약 확정",`${r.roomName} / ${r.checkin}~${r.checkout}`,r.id);
-  queueKakaoNotification(r.phone,"reservation_approved","숙소 예약 확정",`${r.roomName} 예약이 확정되었습니다.\n이용일: ${r.checkin}~${r.checkout}`,r.id);
-  audit("숙소 입금확인/예약승인",`${r.userName}/${r.roomName}`);
-  save();toast("입금 확인 및 예약 확정 처리되었습니다.");render();
+async function confirmPayment(id){
+  const r=state.reservations.find(x=>x.id===id);if(!r)return toast("예약 정보를 찾을 수 없습니다.");const patch={status:"승인",paymentConfirmedAt:new Date().toLocaleString(),checkinStatus:"이용대기"};
+  try{setOperationBusy(true,"입금확인 및 예약 확정 중입니다.");await patchServerRecord("reservations",id,patch);Object.assign(r,patch);addReservationTimeline(r.id,"입금 확인 및 예약 확정",`${r.userName||""} / ${r.roomName||""} / ${money(r.amount||0)}`);safeLocalSave();setOperationBusy(false);toast("입금 확인 및 예약 확정 처리되었습니다.");render();}catch(err){setOperationBusy(false);toast("처리 실패: "+(err.message||"오류"));}
 }
-function extendPaymentDue(id,hours){
-  const r=state.reservations.find(x=>x.id===id);
-  if(!r)return toast("예약 정보를 찾을 수 없습니다.");
-  const base=new Date();
-  base.setHours(base.getHours()+Number(hours||24));
-  r.paymentDueAt=base.toLocaleString();
-  addReservationTimeline(r.id,"입금기한 연장",`${hours}시간 연장 / ${r.paymentDueAt}`);
-  addWebNotification(r.userId,"입금기한 연장",`${r.roomName} 예약 입금기한이 ${r.paymentDueAt}까지로 연장되었습니다.`,r.id);
-  save();toast("입금기한이 연장되었습니다.");render();
+async function extendPaymentDue(id,hours){
+  const r=state.reservations.find(x=>x.id===id);if(!r)return toast("예약 정보를 찾을 수 없습니다.");const base=new Date();base.setHours(base.getHours()+Number(hours||24));const patch={paymentDueAt:base.toLocaleString()};
+  try{setOperationBusy(true,"입금기한을 연장 중입니다.");await patchServerRecord("reservations",id,patch);Object.assign(r,patch);addReservationTimeline(r.id,"입금기한 연장",`${hours}시간 연장 / ${r.paymentDueAt}`);safeLocalSave();setOperationBusy(false);toast("입금기한이 연장되었습니다.");render();}catch(err){setOperationBusy(false);toast("연장 실패: "+(err.message||"오류"));}
 }
-function showRefundEstimate(id){
-  const r=state.reservations.find(x=>x.id===id);
-  if(!r)return toast("예약 정보를 찾을 수 없습니다.");
-  const rate=refundRateForReservation(r);
-  const amount=refundAmountForReservation(r);
-  alert(`[환불 예상 계산]\n예약자: ${r.userName}\n숙소: ${r.roomName}\n이용일: ${r.checkin}~${r.checkout}\n결제금액: ${money(r.amount||0)}\n적용 환불률: ${rate}%\n예상 환불금액: ${money(amount)}\n\n환불정책: ${r.refundPolicySnapshot||refundRulesText()}`);
+function showRefundEstimate(id){const r=state.reservations.find(x=>x.id===id);if(!r)return toast("예약 정보를 찾을 수 없습니다.");const rate=refundRateForReservation(r);const amount=refundAmountForReservation(r);alert(`[환불 예상 계산]\n예약자: ${r.userName}\n숙소: ${r.roomName}\n이용일: ${r.checkin}~${r.checkout}\n결제금액: ${money(r.amount||0)}\n적용 환불률: ${rate}%\n예상 환불금액: ${money(amount)}\n\n환불정책: ${r.refundPolicySnapshot||refundRulesText()}`);}
+function showReservationTimeline(id){const rows=(state.reservationTimeline||[]).filter(x=>x.reservationId===id);alert(rows.length?rows.map(x=>`${x.createdAt}\n${x.action}\n${x.detail||""}\n처리자: ${x.actor||""}`).join("\n\n"):"예약 이력이 없습니다.");}
+async function adminCancelReservation(id){
+  const r=state.reservations.find(x=>x.id===id);if(!r)return toast("예약 정보를 찾을 수 없습니다.");if(!confirm("승인된 예약을 취소 처리할까요?"))return;const patch={status:"취소",checkinStatus:r.checkinStatus||"관리자 취소"};
+  try{setOperationBusy(true,"예약을 취소 중입니다.");await patchServerRecord("reservations",id,patch);Object.assign(r,patch);addReservationTimeline(r.id,"관리자 예약 취소",`${r.userName||""} / ${r.roomName||""}`);safeLocalSave();setOperationBusy(false);toast("예약이 취소되었습니다.");render();}catch(err){setOperationBusy(false);toast("취소 실패: "+(err.message||"오류"));}
 }
-function showReservationTimeline(id){
-  const rows=(state.reservationTimeline||[]).filter(x=>x.reservationId===id);
-  alert(rows.length?rows.map(x=>`${x.createdAt}\n${x.action}\n${x.detail||""}\n처리자: ${x.actor||""}`).join("\n\n"):"예약 이력이 없습니다.");
+async function markCheckin(id){
+  const r=state.reservations.find(x=>x.id===id);if(!r)return toast("예약을 찾을 수 없습니다.");if(r.userId!==user().id)return toast("예약자만 체크인할 수 있습니다.");if(r.status!=="승인")return toast("승인된 예약만 체크인할 수 있습니다.");const chk=canCheckinNow(r);if(!chk.ok)return toast(chk.msg);const patch={checkinStatus:"체크인 완료",checkedInAt:new Date().toLocaleString()};
+  try{setOperationBusy(true,"체크인 처리 중입니다.");await patchServerRecord("reservations",id,patch);Object.assign(r,patch);addReservationTimeline(r.id,"체크인 완료",`${r.userName}/${r.roomName}`);safeLocalSave();setOperationBusy(false);toast("체크인 완료");render();}catch(err){setOperationBusy(false);toast("체크인 실패: "+(err.message||"오류"));}
 }
-function adminCancelReservation(id){
-  const r=state.reservations.find(x=>x.id===id);
-  if(!r) return toast("예약 정보를 찾을 수 없습니다.");
-  if(!confirm("승인된 예약을 취소 처리할까요? 취소 후 해당 날짜는 다시 예약 가능합니다.")) return;
-  r.status="취소";
-  r.checkinStatus=r.checkinStatus||"관리자 취소";
-  addReservationTimeline(r.id,"관리자 예약 취소",`${r.userName||""} / ${r.roomName||""}`);
-  if(typeof audit==="function") audit("숙소 예약 관리자 취소",`${r.userName||""} / ${r.roomName||""} / ${r.checkin||""}~${r.checkout||""}`);
-  save();
-  toast("예약이 취소되었습니다.");
-  render();
+async function markCheckout(id){
+  const r=state.reservations.find(x=>x.id===id);if(!r)return toast("예약을 찾을 수 없습니다.");if(r.userId!==user().id)return toast("예약자만 체크아웃할 수 있습니다.");if(r.status!=="승인")return toast("승인된 예약만 체크아웃할 수 있습니다.");const chk=canCheckoutNow(r);if(!chk.ok)return toast(chk.msg);const patch={checkinStatus:"체크아웃 완료",checkedOutAt:new Date().toLocaleString()};
+  try{setOperationBusy(true,"체크아웃 처리 중입니다.");await patchServerRecord("reservations",id,patch);Object.assign(r,patch);addReservationTimeline(r.id,"체크아웃 완료",`${r.userName}/${r.roomName}`);safeLocalSave();setOperationBusy(false);toast("체크아웃 완료");render();}catch(err){setOperationBusy(false);toast("체크아웃 실패: "+(err.message||"오류"));}
 }
-function markCheckin(id){
-  const r=state.reservations.find(x=>x.id===id);
-  if(!r) return toast("예약을 찾을 수 없습니다.");
-  if(r.userId!==user().id) return toast("예약자만 체크인할 수 있습니다.");
-  if(r.status!=="승인") return toast("승인된 예약만 체크인할 수 있습니다.");
-  const chk=canCheckinNow(r);
-  if(!chk.ok) return toast(chk.msg);
-  r.checkinStatus="체크인 완료";
-  r.checkedInAt=new Date().toLocaleString();
-  addReservationTimeline(r.id,"체크인 완료",`${r.userName}/${r.roomName}`);
-  audit("숙소 체크인",`${r.userName}/${r.roomName}`);
-  save();toast("체크인 완료");render();
-}
-function markCheckout(id){
-  const r=state.reservations.find(x=>x.id===id);
-  if(!r) return toast("예약을 찾을 수 없습니다.");
-  if(r.userId!==user().id) return toast("예약자만 체크아웃할 수 있습니다.");
-  if(r.status!=="승인") return toast("승인된 예약만 체크아웃할 수 있습니다.");
-  const chk=canCheckoutNow(r);
-  if(!chk.ok) return toast(chk.msg);
-  r.checkinStatus="체크아웃 완료";
-  r.checkedOutAt=new Date().toLocaleString();
-  addReservationTimeline(r.id,"체크아웃 완료",`${r.userName}/${r.roomName}`);
-  audit("숙소 체크아웃",`${r.userName}/${r.roomName}`);
-  save();toast("체크아웃 완료");render();
-}
+
 function validateFile(input){
   const file=input.files && input.files[0];
   if(!file) return {ok:true, name:""};
@@ -1144,38 +1127,33 @@ function showReserve(roomId){
 }
 
 function updateEstimate(form){const nights=calcNights(form.checkin.value,form.checkout.value);const useType=form.useType.value;const price=calcPrice(useType,nights,form.checkin.value,form.checkout.value);const seasonBase=(form.checkin.value&&form.checkout.value)?calcBaseBySeason(form.checkin.value,form.checkout.value):state.settings.nightlyPrice*(nights||0);let txt="";if(useType==="일반고객"){txt=`일반고객: 시즌요금 기준 예상 입금액 ${money(price)} · 입금계좌 ${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`;}else{const p=getPolicy(useType);txt=p.paymentRequired?`${p.name}: 시즌요금 ${money(seasonBase)} 기준 할인율 ${p.discountRate}% 적용 · 예상 입금액 ${money(price)} · 입금계좌 ${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`:`${p.name}: 무료 적용 조건입니다. 예상 ${nights||0}박`;}document.getElementById("estimate").innerText=txt;}
-function submitReservation(e,roomId){
-  e.preventDefault();
-  const f=new FormData(e.target);
-  const checkin=f.get("checkin"),checkout=f.get("checkout"),people=Number(f.get("people")),useType=f.get("useType");
-  const room=state.rooms.find(r=>r.id===roomId);
-  const nights=calcNights(checkin,checkout);
+async function submitReservation(e,roomId){
+  e.preventDefault();if(operationBusy)return;
+  if(!confirm("숙소 예약을 신청하시겠습니까?"))return;
+  const f=new FormData(e.target);const checkin=f.get("checkin"),checkout=f.get("checkout"),people=Number(f.get("people")),useType=f.get("useType");
+  const room=state.rooms.find(r=>r.id===roomId);const nights=calcNights(checkin,checkout);
   if(nights<=0)return toast("체크아웃은 체크인 이후 날짜여야 합니다.");
   if(!f.get("refundAgree"))return toast("환불 규정 확인 및 동의가 필요합니다.");
   if(people>room.maxPeople)return toast(`${room.name} 최대 인원은 ${room.maxPeople}명입니다.`);
   if(isBlocked(roomId,checkin,checkout))return toast("해당 기간은 예약 차단 기간입니다.");
   if(!isRoomAvailable(roomId,checkin,checkout))return toast("해당 기간은 이미 예약되어 있습니다.");
-  const isCustomerForLimit=user().role==="customer";
-  const used=isCustomerForLimit?0:annualUsedNights(user().id,checkin.slice(0,4));
+  const isCustomerForLimit=user().role==="customer";const used=isCustomerForLimit?0:annualUsedNights(user().id,checkin.slice(0,4));
   if(!isCustomerForLimit&&used+nights>state.settings.annualNightLimit)return toast(`직원당 연간 ${state.settings.annualNightLimit}박 기준을 초과합니다. 현재 ${used}박 사용/신청 중입니다.`);
-  const amount=calcPrice(useType,nights,checkin,checkout);
-  const isCustomer=user().role==="customer";
-  const policy=isCustomer?{name:"일반고객",discountRate:0,paymentRequired:true}:getPolicy(useType);
+  const amount=calcPrice(useType,nights,checkin,checkout);const isCustomer=user().role==="customer";const policy=isCustomer?{name:"일반고객",discountRate:0,paymentRequired:true}:getPolicy(useType);
   const paymentDueAt=policy.paymentRequired?addHoursToNow(state.settings.paymentDeadlineHours||24):"";
-  const status=policy.paymentRequired?"대기":"대기";
-  const newReservation={id:uid(),userId:user().id,userType:isCustomer?"customer":"employee",userName:user().name,dept:user().dept||"",roomId,roomName:room.name,checkin,checkout,nights,people,extraPeople:Math.max(0,people-room.basePeople),useType,discountRate:policy.discountRate,paymentRequired:policy.paymentRequired,amount,bankInfo:`${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`,phone:f.get("phone"),payer:f.get("payer"),memo:f.get("memo"),status,checkinStatus:policy.paymentRequired?"입금대기":"예약대기",paymentDueAt,refundPolicySnapshot:refundRulesText(),source:isCustomer?"public":"welfare",createdAt:new Date().toLocaleString()};
-  state.reservations.push(newReservation);
-  addReservationTimeline(newReservation.id,"예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);
-  addWebNotification("admin","숙소 예약 신청",`${user().name} / ${room.name} / ${checkin}~${checkout}`,newReservation.id);
-  addWebNotification(user().id,"숙소 예약 접수",`${room.name} / ${checkin}~${checkout}${policy.paymentRequired?` / 입금액 ${money(amount)} / ${newReservation.bankInfo}`:""}`,newReservation.id);
-  queueKakaoNotification(newReservation.phone,"reservation_received","숙소 예약 접수",`${room.name} ${checkin}~${checkout}
-입금액: ${money(amount)}
-입금계좌: ${newReservation.bankInfo}
-입금기한: ${paymentDueAt}
-환불정책: ${newReservation.refundPolicySnapshot}`,newReservation.id);
-  audit("숙소 예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);
-  save();toast(policy.paymentRequired?"예약이 접수되었습니다. 입금 확인 후 확정됩니다.":"예약 신청이 접수되었습니다.");setPage("stay");
+  const item={id:uid(),userId:user().id,userType:isCustomer?"customer":"employee",userName:user().name,dept:user().dept||"",roomId,roomName:room.name,checkin,checkout,nights,people,extraPeople:Math.max(0,people-room.basePeople),useType,discountRate:policy.discountRate,paymentRequired:policy.paymentRequired,amount,bankInfo:`${state.settings.bankName} ${state.settings.bankAccount} ${state.settings.bankHolder}`,phone:f.get("phone"),payer:f.get("payer"),memo:f.get("memo"),status:"대기",checkinStatus:policy.paymentRequired?"입금대기":"예약대기",paymentDueAt,refundPolicySnapshot:refundRulesText(),source:isCustomer?"public":"welfare",createdAt:new Date().toLocaleString(),createdAtIso:new Date().toISOString()};
+  try{
+    setOperationBusy(true,"숙소 예약을 신청 중입니다.");
+    await createServerRecord("reservations",item);
+    state.reservations.unshift(item);
+    addReservationTimeline(item.id,"예약 신청",`${user().name}/${room.name}/${checkin}~${checkout}`);
+    addWebNotification("admin","숙소 예약 신청",`${user().name} / ${room.name} / ${checkin}~${checkout}`,item.id);
+    addWebNotification(user().id,"숙소 예약 접수",`${room.name} / ${checkin}~${checkout}`,item.id);
+    safeLocalSave();
+    setOperationBusy(false);toast("숙소 예약 신청이 완료되었습니다.");setPage("stay");
+  }catch(err){setOperationBusy(false);console.error(err);toast("예약 신청 실패: "+(err.message||"다시 시도해 주세요."));}
 }
+
 function reservationTable(rows,admin){
   if(!rows.length)return`<div class="panel empty">예약 내역이 없습니다.</div>`;
   return`<table class="table"><thead><tr>${admin?`<th>선택</th>`:""}<th>숙소</th><th>신청자</th><th>기간</th><th>구분/금액</th><th>인원</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows.map(r=>`<tr>${admin?`<td>${rowCheck('chkReservation',r.id)}</td>`:""}<td>${r.roomName}</td><td>${r.userName}<br><span class="muted">${r.dept||""}</span></td><td>${r.checkin} ~ ${r.checkout}<br><b>${r.nights||calcNights(r.checkin,r.checkout)}박</b></td><td>${r.useType||"-"}<br>${r.amount?`<b>${money(r.amount)}</b><br><span class="muted">${r.bankInfo||""}</span>`:"무료"}</td><td>${r.people}명${r.extraPeople?`<br><span class="muted">추가 ${r.extraPeople}명</span>`:""}</td><td><span class="status ${reservationStatusLabel(r)}">${reservationStatusLabel(r)}</span><br><span class="muted">${r.source==="manual"?"관리자 등록":(r.status==="승인"?(r.checkinStatus||"이용대기"):(displayPaymentDue(r)||""))}</span></td><td class="actions">${admin?adminReservationButtons(r):userReservationButtons(r)}</td></tr>`).join("")}</tbody></table>`;
@@ -1204,40 +1182,30 @@ function userReservationButtons(r){
 function userCancelButton(type,id,status){
   return userReservationButtons(state[type].find(x=>x.id===id));
 }
-function userCancel(type,id){
-  const row=state[type].find(x=>x.id===id);
-  if(!row) return toast("대상을 찾을 수 없습니다.");
-  if(!confirm("예약을 취소할까요? 환불 대상인 경우 관리자 확인 후 처리됩니다.")) return;
-  row.status="취소";
-  row.checkinStatus=row.checkinStatus||"예약자 취소";
-  if(type==="reservations") addReservationTimeline(row.id,"예약자 취소",`${row.userName||""}/${row.roomName||""}`);
-  save();toast("취소 처리되었습니다.");render();
+async function userCancel(type,id){
+  const row=state[type].find(x=>x.id===id);if(!row)return toast("대상을 찾을 수 없습니다.");if(!confirm("예약을 취소할까요? 환불 대상인 경우 관리자 확인 후 처리됩니다."))return;const patch={status:"취소",checkinStatus:row.checkinStatus||"예약자 취소"};
+  try{setOperationBusy(true,"예약을 취소 중입니다.");await patchServerRecord(type,id,patch);Object.assign(row,patch);if(type==="reservations")addReservationTimeline(row.id,"예약자 취소",`${row.userName||""}/${row.roomName||""}`);safeLocalSave();setOperationBusy(false);toast("취소 처리되었습니다.");render();}catch(err){setOperationBusy(false);toast("취소 실패: "+(err.message||"오류"));}
 }
 
 function commonAdminButtons(type,id){
   return `<button onclick="setStatus('${type}','${id}','승인')">승인</button><button class="danger" onclick="setStatus('${type}','${id}','반려')">반려</button><button class="danger" onclick="deleteOne('${type}','${id}')">삭제</button>`;
 }
-function deleteOne(type,id){
+async function deleteOne(type,id){
   if(!confirm("삭제할까요?")) return;
-  state[type]=state[type].filter(x=>x.id!==id);
-  save();toast("삭제되었습니다.");render();
+  try{if(SERVER_TYPES[type])await deleteServerRecord(type,id);state[type]=state[type].filter(x=>x.id!==id);safeLocalSave();toast("삭제되었습니다.");render();}catch(err){toast("삭제 실패: "+(err.message||"오류"));}
 }
 
 function adminButtons(type,id,status){
   return commonAdminButtons(type,id);
 }
-function setStatus(type,id,status){
-  const row=(state[type]||[]).find(x=>x.id===id);
-  if(!row)return toast("대상을 찾을 수 없습니다.");
-  row.status=status;
-  if(type==="reservations"){
-    if(status==="승인" && (!row.checkinStatus || row.checkinStatus==="이용대기" || row.checkinStatus==="예약대기" || row.checkinStatus==="입금대기")) {row.checkinStatus="이용대기"; row.paymentConfirmedAt=row.paymentConfirmedAt||new Date().toLocaleString();}
-    addReservationTimeline(row.id,`예약 ${status}`,`${row.userName||""} / ${row.roomName||""}`);
-    addWebNotification(row.userId,`숙소 예약 ${status}`,`${row.roomName||""} / ${row.checkin||""}~${row.checkout||""}`,row.id);
-    queueKakaoNotification(row.phone,"reservation",`숙소 예약 ${status}`,`${row.userName||""}님의 ${row.roomName||""} 예약이 ${status} 처리되었습니다.`,row.id);
-  }
-  save();toast(`${status} 처리되었습니다.`);render();
+async function setStatus(type,id,status){
+  const row=(state[type]||[]).find(x=>x.id===id);if(!row)return toast("대상을 찾을 수 없습니다.");
+  try{setOperationBusy(true,`${status} 처리 중입니다.`);await patchServerRecord(type,id,{status});row.status=status;
+    if(type==="reservations"){if(status==="승인"&&(!row.checkinStatus||["이용대기","예약대기","입금대기"].includes(row.checkinStatus))){row.checkinStatus="이용대기";row.paymentConfirmedAt=row.paymentConfirmedAt||new Date().toLocaleString();await patchServerRecord(type,id,{checkinStatus:row.checkinStatus,paymentConfirmedAt:row.paymentConfirmedAt});}addReservationTimeline(row.id,`예약 ${status}`,`${row.userName||""} / ${row.roomName||""}`);}
+    safeLocalSave();setOperationBusy(false);toast(`${status} 처리되었습니다.`);render();
+  }catch(err){setOperationBusy(false);toast("처리 실패: "+(err.message||"오류"));}
 }
+
 function getCondolenceTypeId(t){
   return t.id || ("ct_" + String(t.name||t).replace(/\s+/g,"_"));
 }
@@ -1317,7 +1285,7 @@ function printCondolenceForm(id){
     table.form th{text-align:center;font-weight:800;background:#fff}
     .center{text-align:center}.note{margin:7mm 0;font-size:14px;line-height:1.8}.request{text-align:center;margin-top:10mm;font-size:16px;font-weight:800}.date{text-align:center;margin-top:10mm;font-size:18px;font-weight:800}.sign{text-align:right;margin-top:16mm;font-size:16px}
     @media print{.printbar{display:none}.page{margin:0 auto}}
-  </style></head><body><div class="printbar"><button onclick="window.print()">A4 출력 / PDF 저장</button></div>
+  </style></head><body><div class="printbar"><button onclick="window.print()">A4 출력 / PDF 저장</button> <button onclick="if(window.opener&&window.opener.markBenefitPrinted){window.opener.markBenefitPrinted('${c.id}');this.disabled=true;this.innerText='출력완료 기록됨';}">출력 완료</button></div>
   <div class="page">
     <div class="head"><h1>복지지원금 지급 신청서</h1><table class="approval"><tr><th>신청자</th><th>경영총괄</th></tr><tr><td>${c.userName||""}</td><td></td></tr></table></div>
     <h2>1. 인적사항</h2>
@@ -1386,40 +1354,20 @@ function readBenefitFiles(files, done){
     reader.readAsDataURL(file);
   });
 }
-function submitCondolence(e){
-  e.preventDefault();
-  const f=new FormData(e.target);
-  const files=e.target.file && e.target.file.files ? e.target.file.files : [];
-  readBenefitFiles(files,async (attachments)=>{
+async function submitCondolence(e){
+  e.preventDefault();if(operationBusy)return;
+  if(!confirm("복지신청을 접수하시겠습니까?"))return;
+  const f=new FormData(e.target);const files=e.target.file?.files||[];const id=uid();
+  try{
+    setOperationBusy(true,files.length?"증빙자료를 업로드 중입니다.":"복지신청을 저장 중입니다.");
+    const attachments=await uploadBenefitFiles(id,files);
+    setOperationBusy(true,"복지신청을 저장 중입니다.");
     const first=attachments[0]||null;
-    const item={
-      id:uid(),
-      userId:user().id,
-      userName:f.get("userName"),
-      dept:f.get("dept"),
-      position:f.get("position"),
-      contact:f.get("contact"),
-      type:f.get("type"),
-      amount:Number(f.get("amount")||0),
-      condolenceContent:f.get("condolenceContent"),
-      eventDate:f.get("eventDate"),
-      targetName:f.get("targetName"),
-      targetBirth:f.get("targetBirth"),
-      targetRelation:f.get("targetRelation"),
-      attachment:first?first.data:"",
-      attachments,
-      fileName:first?first.name:"",
-      status:"접수",
-      paymentStatus:"",
-      createdAt:new Date().toLocaleString()
-    };
-    state.condolences.push(item);
-    addWebNotification("admin","복지신청 접수",`${item.userName||""} / ${item.type||""} 신청이 접수되었습니다.`,item.id);
-    save();
-    await forceCloudSaveNow("복지신청");
-    toast("복지신청이 접수되었습니다.");
-    render();
-  });
+    const item={id,userId:user().id,userName:f.get("userName"),dept:f.get("dept"),position:f.get("position"),contact:f.get("contact"),type:f.get("type"),amount:Number(f.get("amount")||0),condolenceContent:f.get("condolenceContent"),eventDate:f.get("eventDate"),targetName:f.get("targetName"),targetBirth:f.get("targetBirth"),targetRelation:f.get("targetRelation"),attachment:first?first.url:"",attachments,fileName:first?first.name:"",status:"접수",paymentStatus:"",createdAt:new Date().toLocaleString(),createdAtIso:new Date().toISOString()};
+    await createServerRecord("condolences",item);
+    state.condolences.unshift(item);addWebNotification("admin","복지신청 접수",`${item.userName||""} / ${item.type||""} 신청이 접수되었습니다.`,item.id);safeLocalSave();
+    setOperationBusy(false);toast("복지신청이 완료되었습니다.");render();
+  }catch(err){setOperationBusy(false);console.error(err);toast("복지신청 실패: "+(err.message||"다시 시도해 주세요."));}
 }
 
 function eventPage(){
@@ -1429,25 +1377,15 @@ function eventPage(){
   <section class="section"><h2>내 이벤트 신청 이력</h2>${genericTable(myApps,"eventApplications",false)}</section>`);
 }
 async function applyEvent(id){
-  const ev=state.events.find(e=>e.id===id);
-  const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;
-  if(cnt>=ev.limit)return toast("마감되었습니다.");
-  const item={id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString()};
-  state.eventApplications.push(item);
-  addWebNotification("admin","이벤트 신청 접수",`${item.userName||""} / ${item.type||""} 신청이 접수되었습니다.`,item.id);
-  save();
-  await forceCloudSaveNow("이벤트 신청");
-  toast("이벤트 신청 완료");render();
+  if(operationBusy)return;const ev=state.events.find(e=>e.id===id);const cnt=state.eventApplications.filter(a=>a.eventId===id&&a.status!=="취소").length;
+  if(cnt>=ev.limit)return toast("마감되었습니다.");if(!confirm("이벤트를 신청하시겠습니까?"))return;
+  const item={id:uid(),eventId:id,type:ev.title,date:ev.date,userId:user().id,userName:user().name,dept:user().dept,status:"접수완료",createdAt:new Date().toLocaleString(),createdAtIso:new Date().toISOString()};
+  try{setOperationBusy(true,"이벤트를 신청 중입니다.");await createServerRecord("eventApplications",item);state.eventApplications.unshift(item);addWebNotification("admin","이벤트 신청 접수",`${item.userName||""} / ${item.type||""} 신청이 접수되었습니다.`,item.id);safeLocalSave();setOperationBusy(false);toast("이벤트 신청이 완료되었습니다.");render();}
+  catch(err){setOperationBusy(false);toast("이벤트 신청 실패: "+(err.message||"다시 시도해 주세요."));}
 }
 async function cancelEventApplication(id){
-  const a=(state.eventApplications||[]).find(x=>x.id===id && x.userId===user().id);
-  if(!a) return toast("신청 내역을 찾을 수 없습니다.");
-  if(!canUserCancelStatus(a.status)) return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");
-  if(!confirm("이벤트 신청을 취소할까요? 신청 기록은 관리자 현황에서도 삭제됩니다.")) return;
-  state.eventApplications=(state.eventApplications||[]).filter(x=>x.id!==id);
-  save();
-  await forceCloudSaveNow("이벤트 신청 취소");
-  toast("이벤트 신청 기록이 삭제되었습니다.");render();
+  const a=(state.eventApplications||[]).find(x=>x.id===id&&x.userId===user().id);if(!a)return toast("신청 내역을 찾을 수 없습니다.");if(!canUserCancelStatus(a.status))return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");if(!confirm("이벤트 신청을 취소할까요?"))return;
+  try{setOperationBusy(true,"이벤트 신청을 취소 중입니다.");await deleteServerRecord("eventApplications",id);state.eventApplications=state.eventApplications.filter(x=>x.id!==id);safeLocalSave();setOperationBusy(false);toast("이벤트 신청이 취소되었습니다.");render();}catch(err){setOperationBusy(false);toast("취소 실패: "+(err.message||"오류"));}
 }
 
 function discount(){
@@ -1590,47 +1528,12 @@ function safeAdminSection(fnName){
 function visibleNotifications(){const u=user();return (state.notifications||[]).filter(n=>n.userId==="admin"&&u.role==="admin" || n.userId===u.id || n.userId==="all");}
 function unreadNotificationCount(){return visibleNotifications().filter(n=>!n.read).length;}
 function notificationsPage(){const rows=visibleNotifications();return layout(`<section class="section"><div class="admin-titlebar"><div><h2>알림센터</h2><p class="muted">복지몰 내부 알림 원본입니다. 카카오 연동 시 이 알림을 기준으로 발송됩니다.</p></div><div><button class="secondary" onclick="markAllNotificationsRead()">모두 읽음</button><button class="danger" onclick="deleteAllVisibleNotifications()">전체삭제</button></div></div>${rows.length?`<table class="table"><thead><tr><th>상태</th><th>제목</th><th>내용</th><th>일시</th><th>관리</th></tr></thead><tbody>${rows.map(n=>`<tr><td>${n.read?"읽음":"<b>안읽음</b>"}</td><td>${n.title}</td><td>${n.message||""}</td><td>${n.createdAt||""}</td><td><button onclick="markNotificationRead('${n.id}')">읽음</button><button class="danger" onclick="deleteNotification('${n.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">알림이 없습니다.</div>`}</section>`);}
-function markNotificationRead(id){const n=(state.notifications||[]).find(x=>x.id===id);if(n)n.read=true;save();render();}
-function markAllNotificationsRead(){visibleNotifications().forEach(n=>n.read=true);save();toast("알림을 모두 읽음 처리했습니다.");render();}
-function deleteNotification(id){if(!confirm("알림을 삭제할까요?"))return;state.notifications=(state.notifications||[]).filter(n=>n.id!==id);save();toast("알림이 삭제되었습니다.");render();}
-function deleteAllVisibleNotifications(){const ids=new Set(visibleNotifications().map(n=>n.id));if(!ids.size)return toast("삭제할 알림이 없습니다.");if(!confirm("현재 보이는 알림을 모두 삭제할까요?"))return;state.notifications=(state.notifications||[]).filter(n=>!ids.has(n.id));save();toast("알림을 모두 삭제했습니다.");render();}
-function admin(){
-  const tabs=[
-    ["adminDashboard","대시보드"],
-    ["homeAdmin","홈/메뉴/로고"],
-    ["stayAdmin","숙소 관리"],
-    ["condolenceAdmin","복지신청 관리"],
-    ["eventAdminGroup","이벤트 관리"],
-    ["noticeAdminGroup","공지 관리"],
-    ["memberAdmin","회원/관리자"],
-    ["notificationAdmin","알림설정"],
-    ["auditLog","감사 로그"],
-    ["aiAssistant","AI 비서"],
-    ["stats","통계"],
-    ["systemManage","고급관리"]
-  ];
-  let body="";
-  if(adminTab==="adminDashboard") body=adminDashboard();
-  if(adminTab==="homeAdmin") body=homeAdminGroup();
-  if(adminTab==="stayAdmin") body=stayAdminGroup();
-  if(adminTab==="condolenceAdmin") body=condolenceAdminGroup();
-  if(adminTab==="eventAdminGroup") body=eventAdminGroup();
-  
-  if(adminTab==="noticeAdminGroup") body=noticeAdminGroup();
-  if(adminTab==="memberAdmin") body=memberAdminGroup();
-  if(adminTab==="notificationAdmin") body=notificationAdminGroup();
-  if(adminTab==="auditLog") body=auditLogAdmin();
-  if(adminTab==="aiAssistant") body=aiAssistantAdmin();
-  if(adminTab==="stats") body=stats();
-  if(adminTab==="systemManage") body=systemManageAdmin();
-  return layout(`<section class="section">
-    <div class="admin-titlebar"><div><h2>관리자 페이지</h2><p class="muted">현재 관리자: ${user().name}</p></div><div><button class="secondary" onclick="refreshOperationalData()">운영데이터 새로고침</button><button class="secondary" onclick="exportCSV()">Excel용 CSV</button></div></div>
-    <div class="admin-shell">
-      <aside class="admin-side">${tabs.map(t=>`<button class="${adminTab===t[0]?'active':''}" onclick="adminTab='${t[0]}';render()">${t[1]}</button>`).join("")}</aside>
-      <main class="admin-main">${body}</main>
-    </div>
-  </section>`);
-}
+async function markNotificationRead(id){const n=(state.notifications||[]).find(x=>x.id===id);if(!n)return;try{await patchServerRecord("notifications",id,{read:true,status:"읽음"});n.read=true;n.status="읽음";safeLocalSave();render();}catch(err){toast("읽음 처리 실패: "+(err.message||"오류"));}}
+async function markAllNotificationsRead(){const rows=visibleNotifications().filter(n=>!n.read);try{setOperationBusy(true,"알림을 읽음 처리 중입니다.");for(const n of rows)await patchServerRecord("notifications",n.id,{read:true,status:"읽음"});rows.forEach(n=>{n.read=true;n.status="읽음";});safeLocalSave();setOperationBusy(false);render();}catch(err){setOperationBusy(false);toast("읽음 처리 실패: "+(err.message||"오류"));}}
+async function deleteNotification(id){if(!confirm("알림을 삭제할까요?"))return;try{await deleteServerRecord("notifications",id);state.notifications=(state.notifications||[]).filter(n=>n.id!==id);safeLocalSave();toast("알림이 삭제되었습니다.");render();}catch(err){toast("삭제 실패: "+(err.message||"오류"));}}
+async function deleteAllVisibleNotifications(){const rows=visibleNotifications();if(!rows.length)return toast("삭제할 알림이 없습니다.");if(!confirm(`알림 ${rows.length}건을 모두 삭제할까요?`))return;try{setOperationBusy(true,"알림을 삭제 중입니다.");for(const n of rows)await deleteServerRecord("notifications",n.id);const ids=new Set(rows.map(n=>n.id));state.notifications=(state.notifications||[]).filter(n=>!ids.has(n.id));safeLocalSave();setOperationBusy(false);toast("알림을 모두 삭제했습니다.");render();}catch(err){setOperationBusy(false);toast("전체삭제 실패: "+(err.message||"오류"));}}
+async function deleteKakaoOutbox(id){if(!confirm("카카오 발송 대기 이력을 삭제할까요?"))return;try{await deleteServerRecord("kakaoOutbox",id);state.kakaoOutbox=(state.kakaoOutbox||[]).filter(k=>k.id!==id);safeLocalSave();toast("카카오 발송 대기 이력이 삭제되었습니다.");render();}catch(err){toast("삭제 실패: "+(err.message||"오류"));}}
+async function clearKakaoOutbox(){const rows=state.kakaoOutbox||[];if(!rows.length)return toast("삭제할 발송 대기 이력이 없습니다.");if(!confirm(`카카오 발송 대기 이력 ${rows.length}건을 모두 삭제할까요?`))return;try{setOperationBusy(true,"발송 대기 이력을 삭제 중입니다.");for(const row of rows)await deleteServerRecord("kakaoOutbox",row.id);state.kakaoOutbox=[];safeLocalSave();setOperationBusy(false);toast("카카오 발송 대기 이력을 모두 삭제했습니다.");render();}catch(err){setOperationBusy(false);toast("전체삭제 실패: "+(err.message||"오류"));}}
 
 function kakaoReadyPanel(){
   const n=state.notificationSettings||{};
@@ -1646,8 +1549,6 @@ function kakaoReadyPanel(){
   <div class="grid3" style="margin-top:14px"><div class="kpi-card"><small>웹 알림</small><strong>${(state.notifications||[]).length}</strong></div><div class="kpi-card"><small>카카오 발송대기</small><strong>${(state.kakaoOutbox||[]).length}</strong></div><div class="kpi-card"><small>연동상태</small><strong>${n.kakaoEnabled?'활성 준비':'미연동'}</strong></div></div></div>`;
 }
 function notificationAdminGroup(){return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 연동 준비</h3><span class="muted">V28 실제 연동 전 설정 관리</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>카카오 발송 대기 이력</h3><span class="muted">실제 발송 전 준비 데이터</span></div><div class="bulk-toolbar"><button class="danger" onclick="clearKakaoOutbox()">전체삭제</button></div>${(state.kakaoOutbox||[]).length?`<table class="table"><thead><tr><th>대상</th><th>종류</th><th>제목</th><th>상태</th><th>일시</th><th>관리</th></tr></thead><tbody>${state.kakaoOutbox.map(k=>`<tr><td>${k.targetPhone||"-"}</td><td>${k.kind||""}</td><td>${k.title||""}<br><span class="muted">${k.message||""}</span></td><td>${k.status||"발송대기"}</td><td>${k.createdAt||""}</td><td><button class="danger" onclick="deleteKakaoOutbox('${k.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">발송 대기 이력이 없습니다.</div>`}</div></div>`;}
-function deleteKakaoOutbox(id){if(!confirm("카카오 발송 대기 이력을 삭제할까요?"))return;state.kakaoOutbox=(state.kakaoOutbox||[]).filter(k=>k.id!==id);save();toast("카카오 발송 대기 이력이 삭제되었습니다.");render();}
-function clearKakaoOutbox(){const cnt=(state.kakaoOutbox||[]).length;if(!cnt)return toast("삭제할 발송 대기 이력이 없습니다.");if(!confirm(`카카오 발송 대기 이력 ${cnt}건을 모두 삭제할까요?`))return;state.kakaoOutbox=[];save();toast("카카오 발송 대기 이력을 모두 삭제했습니다.");render();}
 
 function saveKakaoSettings(e){
   e.preventDefault();
@@ -1801,16 +1702,10 @@ function condolenceUserButtons(c){
   return `<div class="actions">${html||"-"}</div>`;
 }
 async function cancelCondolenceRequest(id){
-  const c=(state.condolences||[]).find(x=>x.id===id && x.userId===user().id);
-  if(!c) return toast("신청 내역을 찾을 수 없습니다.");
-  if(!canUserCancelStatus(c.status)) return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");
-  if(!confirm("복지신청을 취소할까요? 신청 기록은 관리자 현황에서도 삭제됩니다.")) return;
-  state.condolences=(state.condolences||[]).filter(x=>x.id!==id);
-  save();
-  await forceCloudSaveNow("복지신청 취소");
-  toast("복지신청 기록이 삭제되었습니다.");
-  render();
+  const c=(state.condolences||[]).find(x=>x.id===id&&x.userId===user().id);if(!c)return toast("신청 내역을 찾을 수 없습니다.");if(!canUserCancelStatus(c.status))return toast("승인 또는 반려 처리된 신청은 직접 취소할 수 없습니다.");if(!confirm("복지신청을 취소할까요?"))return;
+  try{setOperationBusy(true,"복지신청을 취소 중입니다.");await deleteServerRecord("condolences",id);state.condolences=state.condolences.filter(x=>x.id!==id);safeLocalSave();setOperationBusy(false);toast("복지신청이 취소되었습니다.");render();}catch(err){setOperationBusy(false);toast("취소 실패: "+(err.message||"오류"));}
 }
+
 function condolenceAdminButtons(c){
   let html="";
   const status=c.status||"접수";
@@ -1834,36 +1729,11 @@ function condolenceAdminButtons(c){
   }
   return `<div class="actions">${html||"-"}</div>`;
 }
-function setCondolenceStatus(id,status){
-  const c=state.condolences.find(x=>x.id===id);
-  if(!c) return toast("신청 내역을 찾을 수 없습니다.");
-  c.status=status;
-  save();
-  toast(`${status} 처리되었습니다.`);
-  render();
-}
-function approveCondolence(id){
-  const c=state.condolences.find(x=>x.id===id);
-  if(!c) return toast("신청 내역을 찾을 수 없습니다.");
-  c.status="승인";
-  c.approvedAt=new Date().toLocaleString();
-  save();
-  toast("승인 처리되었습니다.");
-  render();
-}
-function rejectCondolence(id){
-  setCondolenceStatus(id,"반려");
-}
-function markCondolencePaid(id){
-  const c=state.condolences.find(x=>x.id===id);
-  if(!c) return toast("신청 내역을 찾을 수 없습니다.");
-  c.status="지급완료";
-  c.paymentStatus="지급완료";
-  c.paidAt=new Date().toLocaleString();
-  save();
-  toast("지급완료 처리되었습니다.");
-  render();
-}
+async function setCondolenceStatus(id,status){const c=state.condolences.find(x=>x.id===id);if(!c)return toast("신청 내역을 찾을 수 없습니다.");try{setOperationBusy(true,`${status} 처리 중입니다.`);await patchServerRecord("condolences",id,{status});c.status=status;safeLocalSave();setOperationBusy(false);toast(`${status} 처리되었습니다.`);render();}catch(err){setOperationBusy(false);toast("처리 실패: "+(err.message||"오류"));}}
+async function approveCondolence(id){const c=state.condolences.find(x=>x.id===id);if(!c)return toast("신청 내역을 찾을 수 없습니다.");const patch={status:"승인",approvedAt:new Date().toLocaleString()};try{setOperationBusy(true,"승인 처리 중입니다.");await patchServerRecord("condolences",id,patch);Object.assign(c,patch);safeLocalSave();setOperationBusy(false);toast("승인 처리되었습니다.");render();}catch(err){setOperationBusy(false);toast("승인 실패: "+(err.message||"오류"));}}
+function rejectCondolence(id){return setCondolenceStatus(id,"반려");}
+async function markCondolencePaid(id){const c=state.condolences.find(x=>x.id===id);if(!c)return toast("신청 내역을 찾을 수 없습니다.");const patch={status:"지급완료",paymentStatus:"지급완료",paidAt:new Date().toLocaleString()};try{setOperationBusy(true,"지급완료 처리 중입니다.");await patchServerRecord("condolences",id,patch);Object.assign(c,patch);safeLocalSave();setOperationBusy(false);toast("지급완료 처리되었습니다.");render();}catch(err){setOperationBusy(false);toast("처리 실패: "+(err.message||"오류"));}}
+
 function condolenceTypeAdmin(){
   const rows=(state.condolenceTypes||[]).map(t=>({...t,amount:Number(t.amount||0)}));
   const cats=["축의금","회갑/칠순/팔순/구순","출산","돌","대학장학금","입학축하금","문화지원금","가족건강검진","건강관리","조의금","기타"];
@@ -2588,6 +2458,8 @@ window.loginCustomer=loginCustomer;
 window.signupCustomer=signupCustomer;
 window.showReserve=showReserve;
 window.submitReservation=submitReservation;
+window.submitCondolence=submitCondolence;
+window.applyEvent=applyEvent;
 window.updateEstimate=updateEstimate;
 window.moveMonth=moveMonth;
 
