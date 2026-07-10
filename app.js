@@ -136,8 +136,13 @@ function safeLocalSave(){
   catch(err){console.warn("localStorage 저장 생략",err);try{localStorage.removeItem("with_welfare_v5");}catch(e){}return false;}
 }
 function load(){
-  try{const s=localStorage.getItem("with_welfare_v5"); if(s) return {...JSON.parse(JSON.stringify(seed)),...JSON.parse(s)};}catch(err){console.warn("로컬 캐시 무시",err);}
-  safeLocalSave(); return JSON.parse(JSON.stringify(seed));
+  try{
+    const s=localStorage.getItem("with_welfare_v5");
+    if(s) return {...JSON.parse(JSON.stringify(seed)),...JSON.parse(s)};
+  }catch(err){console.warn("로컬 캐시 무시",err);}
+  // 최초 접속 브라우저에서는 state가 아직 만들어지기 전이므로 safeLocalSave()를 호출하면 안 됩니다.
+  // 서버 데이터를 불러오기 전까지는 메모리의 기본값만 사용합니다.
+  return JSON.parse(JSON.stringify(seed));
 }
 function save(){
   safeLocalSave();
@@ -411,10 +416,21 @@ async function serverApi(type,method="GET",options={}){
   const url=new URL("/api/data",location.origin);url.searchParams.set("type",type);
   if(options.id)url.searchParams.set("id",options.id);
   if(options.userId)url.searchParams.set("userId",options.userId);
-  const res=await fetch(url,{method,headers:method==="GET"||method==="DELETE"?{}:{"content-type":"application/json"},body:method==="GET"||method==="DELETE"?undefined:JSON.stringify(options.body||{}) ,cache:"no-store"});
-  const data=await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
-  if(!res.ok||!data.ok)throw new Error(data.error||`서버 오류 ${res.status}`);
-  return data;
+  let lastError=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),25000);
+    try{
+      const res=await fetch(url,{method,credentials:"same-origin",headers:method==="GET"||method==="DELETE"?{"accept":"application/json"}:{"content-type":"application/json","accept":"application/json"},body:method==="GET"||method==="DELETE"?undefined:JSON.stringify(options.body||{}),cache:"no-store",signal:controller.signal});
+      const data=await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
+      if(!res.ok||!data.ok)throw new Error(data.error||`서버 오류 ${res.status}`);
+      clearTimeout(timer);return data;
+    }catch(err){
+      clearTimeout(timer);lastError=err;
+      if(attempt<3)await new Promise(r=>setTimeout(r,attempt*700));
+    }
+  }
+  throw lastError||new Error("서버 연결에 실패했습니다.");
 }
 async function createServerRecord(stateKey,record){return serverApi(SERVER_TYPES[stateKey],"POST",{body:{record}});}
 async function patchServerRecord(stateKey,id,patch){return serverApi(SERVER_TYPES[stateKey],"PATCH",{body:{id,patch}});}
@@ -1568,6 +1584,43 @@ function toggleKakaoEnabled(){
   state.notificationSettings=n;
   save();toast(n.kakaoEnabled?"카카오 알림 활성 준비 상태입니다.":"카카오 알림을 비활성화했습니다.");render();
 }
+function admin(){
+  const tabs=[
+    ["adminDashboard","대시보드"],
+    ["homeAdmin","홈/메뉴/로고"],
+    ["stayAdmin","숙소 관리"],
+    ["condolenceAdmin","복지신청 관리"],
+    ["eventAdminGroup","이벤트 관리"],
+    ["noticeAdminGroup","공지 관리"],
+    ["memberAdmin","회원/관리자"],
+    ["notificationAdmin","알림설정"],
+    ["auditLog","감사 로그"],
+    ["aiAssistant","AI 비서"],
+    ["stats","통계"],
+    ["systemManage","고급관리"]
+  ];
+  let body="";
+  if(adminTab==="adminDashboard") body=adminDashboard();
+  if(adminTab==="homeAdmin") body=homeAdminGroup();
+  if(adminTab==="stayAdmin") body=stayAdminGroup();
+  if(adminTab==="condolenceAdmin") body=condolenceAdminGroup();
+  if(adminTab==="eventAdminGroup") body=eventAdminGroup();
+  if(adminTab==="noticeAdminGroup") body=noticeAdminGroup();
+  if(adminTab==="memberAdmin") body=memberAdminGroup();
+  if(adminTab==="notificationAdmin") body=notificationAdminGroup();
+  if(adminTab==="auditLog") body=auditLogAdmin();
+  if(adminTab==="aiAssistant") body=aiAssistantAdmin();
+  if(adminTab==="stats") body=stats();
+  if(adminTab==="systemManage") body=systemManageAdmin();
+  return layout(`<section class="section">
+    <div class="admin-titlebar"><div><h2>관리자 페이지</h2><p class="muted">현재 관리자: ${user().name}</p></div><div><button class="secondary" onclick="refreshOperationalData()">운영데이터 새로고침</button><button class="secondary" onclick="exportCSV()">Excel용 CSV</button></div></div>
+    <div class="admin-shell">
+      <aside class="admin-side">${tabs.map(t=>`<button class="${adminTab===t[0]?'active':''}" onclick="adminTab='${t[0]}';render()">${t[1]}</button>`).join("")}</aside>
+      <main class="admin-main">${body}</main>
+    </div>
+  </section>`);
+}
+
 function adminDashboard(){
   const s=adminQuickStats();
   return `<div class="group-box">
