@@ -1,3 +1,4 @@
+const APP_VERSION="V28.0.1 Production";
 window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
 const app=document.getElementById("app");
 const V16_CLOUD_READY=true;
@@ -90,8 +91,8 @@ const seed={
     {id:"ct5", name:"기타", description:"기타 경조사"}
   ],
   rooms:[
-    {id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션"},
-    {id:"solar", name:"솔레동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션"}
+    {id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 스페이스 농농"},
+    {id:"solar", name:"솔레동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 스페이스 농농"}
   ],
   reservations:[],
   externalReservations:[],
@@ -109,7 +110,7 @@ const seed={
   ],
   vacationSupport:[],
   notices:[
-    {id:"n1",title:"제주 사계펜션 예약 운영 안내",important:true,body:"스텔라동, 솔레동은 숙소별 기본/최대 인원 기준에 따라 운영합니다.",views:0},
+    {id:"n1",title:"제주 스페이스 농농 예약 운영 안내",important:true,body:"스텔라동, 솔레동은 숙소별 기본/최대 인원 기준에 따라 운영합니다.",views:0},
     {id:"n2",title:"지인 이용 시 50% 할인 금액 입금 안내",important:true,body:"지인 이용은 1박 270,000원 기준 50% 할인 금액을 회사 지정 계좌로 이체합니다.",views:0}
   ],
   mailOutbox:[]
@@ -175,6 +176,17 @@ function migrate(){
   if(!state.kakaoOutbox){state.kakaoOutbox=[]; changed=true;}
   if(!state.reservationTimeline){state.reservationTimeline=[]; changed=true;}
   if(!state.resetLogs){state.resetLogs=[]; changed=true;}
+  if(!state.kakaoLogs){state.kakaoLogs=[]; changed=true;}
+  if(!state.notificationSettings) state.notificationSettings={};
+  if(!state.notificationSettings.pfId){state.notificationSettings.pfId="KA01PF2607160907408901c5KLS1olOw"; changed=true;}
+  if(!state.notificationSettings.senderPhone){state.notificationSettings.senderPhone=""; changed=true;}
+  if(!state.notificationSettings.testPhone){state.notificationSettings.testPhone=""; changed=true;}
+  if(!state.notificationSettings.templateIds){state.notificationSettings.templateIds={
+    WM_STAY_RECEIVED:"KA01TP2607220548142137dMjVZXa0L8",WM_STAY_APPROVED:"KA01TP260722055055717lz6OgIGAm4Z",WM_STAY_REJECTED:"KA01TP260722055226273aFcPFe61nxh",
+    WM_WELFARE_RECEIVED:"KA01TP260722055330362BpQN4GhtlTl",WM_WELFARE_APPROVED:"KA01TP260722055859720Nq5kkyAZf6e",WM_WELFARE_REJECTED:"KA01TP260722060128054StGoydWebye",
+    WM_EVENT_RECEIVED:"KA01TP260722060231856meHzvby9Qmq",WM_EVENT_APPROVED:"KA01TP260722061930000BvI7HNyEOE4",WM_EVENT_REJECTED:"KA01TP260722062020628nsez93oW2jT",WM_PASSWORD_RESET:"KA01TP260722062104241096e5zHzCDZ",
+    SN_STAY_RECEIVED:"KA01TP260722084505039zTmPZoQH5c2",SN_PAYMENT_GUIDE:"KA01TP260722085755057e9NpJjHlBNx",SN_PAYMENT_CONFIRMED:"KA01TP260722100429917Ltf4kM9BiBC",SN_STAY_APPROVED:"KA01TP260722100525728qGPR82he1FR",SN_STAY_REJECTED:"KA01TP260722100616614hsXNGDGplNR",SN_STAY_CANCELED:"KA01TP260722100703352Rwi14e6ze6A",SN_CHECKIN_GUIDE:"KA01TP260722100806722ebnAmUYFRON",SN_CHECKOUT_GUIDE:"KA01TP260722100859349V6Q7oQfrPyv",SN_PASSWORD_RESET:"KA01TP260722102433857sCmqjYut3MI"
+  }; changed=true;}
   if(!state.notificationSettings){
     state.notificationSettings={kakaoEnabled:false,kakaoProvider:"",kakaoApiKey:"",kakaoSecretKey:"",kakaoSenderKey:"",templates:{reservationReceived:"숙소 예약이 접수되었습니다.",reservationApproved:"숙소 예약이 확정되었습니다.",reservationRejected:"숙소 예약이 반려되었습니다.",reservationCanceled:"숙소 예약이 취소되었습니다.",benefitApproved:"복지신청이 승인되었습니다.",eventSelected:"이벤트 신청 결과를 확인해 주세요."}};
     changed=true;
@@ -202,6 +214,7 @@ function migrate(){
   ]; changed=true;}
   if(state.rooms&&!state.rooms[0].photos){state.rooms=state.rooms.map(r=>({...r,photos:[]})); changed=true;}
   if(!state.settings.logoUrl){state.settings.logoUrl="logo.gif"; changed=true;}
+  if(!state.settings.publicLogoUrl){state.settings.publicLogoUrl=""; changed=true;}
   if(!state.settings.homeBadge){state.settings.homeBadge="Company Welfare Platform"; changed=true;}
   if(!state.settings.homeTitle){state.settings.homeTitle="회원 승인형 회사 복지몰"; changed=true;}
   if(!state.settings.homeDescription){state.settings.homeDescription="임직원을 위한 숙소 예약, 복지신청, 이벤트 서비스를 한곳에서 이용할 수 있습니다."; changed=true;}
@@ -302,8 +315,8 @@ function v16DedupeState(){
     if(!roomByName[r.name]) roomByName[r.name]=r;
   });
   state.rooms=Object.values(roomByName);
-  if(!state.rooms.find(r=>r.name==="스텔라동")) state.rooms.push({id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
-  if(!state.rooms.find(r=>r.name==="솔레동")) state.rooms.push({id:"solar", name:"솔레동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 사계펜션", photos:[]});
+  if(!state.rooms.find(r=>r.name==="스텔라동")) state.rooms.push({id:"stella", name:"스텔라동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 스페이스 농농", photos:[]});
+  if(!state.rooms.find(r=>r.name==="솔레동")) state.rooms.push({id:"solar", name:"솔레동", basePeople:5, maxPeople:8, address:"제주특별자치도 서귀포시 안덕면 사계북로41번길 27-45, 스페이스 농농", photos:[]});
   state.rooms=state.rooms.filter(r=>r.name==="스텔라동"||r.name==="솔레동");
   state.rooms.forEach(r=>{
     if(!r.photos) r.photos=[];
@@ -566,6 +579,7 @@ function loginUser(e){
   if(u.status!=="가입승인")return toast("관리자 가입 승인 후 로그인 가능합니다.");
   session={id:u.id,role:"user"};
   localStorage.setItem("with_session_v5",JSON.stringify(session));
+  if(u.mustChangePassword) page="passwordChange";
   render();
 }
 function loginAdmin(e){e.preventDefault();const f=new FormData(e.target);const a=state.admins.find(x=>x.loginId===f.get("id")&&x.password===f.get("password"));if(!a)return toast("관리자 ID 또는 비밀번호가 일치하지 않습니다.");session={id:a.id,role:"admin"};localStorage.setItem("with_session_v5",JSON.stringify(session));render();}
@@ -587,22 +601,25 @@ function signup(e){
   render();
 }
 
-function requestPasswordReset(e){
-  e.preventDefault();
-  const f=new FormData(e.target);
-  const phone=onlyDigits(f.get("phone"));
-  if(!isValidMobile(phone)) return toast("휴대폰 번호는 하이픈 없이 10~11자리 숫자로 입력해 주세요.");
-  const u=state.users.find(x=>x.name===f.get("name")&&onlyDigits(x.phone)===phone);
-  if(!u) return toast("등록된 회원 정보를 찾을 수 없습니다.");
-  if(!state.passwordResetRequests) state.passwordResetRequests=[];
-  if(state.passwordResetRequests.some(r=>r.userId===u.id&&r.status==="요청")) return toast("이미 처리 대기 중인 초기화 요청이 있습니다.");
-  state.passwordResetRequests.push({id:uid(),userId:u.id,userName:u.name,dept:u.dept||"",phone:u.phone,status:"요청",createdAt:new Date().toLocaleString(),processedAt:""});
-  save();
-  toast("비밀번호 초기화 요청이 접수되었습니다.");
-  loginTab="user";
-  render();
+function createTempPassword(){return String(Math.floor(100000+Math.random()*900000));}
+async function requestPasswordReset(e){
+  e.preventDefault();const f=new FormData(e.target);const phone=onlyDigits(f.get("phone"));
+  if(!isValidMobile(phone)) return toast("휴대폰 번호를 확인해 주세요.");
+  const u=state.users.find(x=>x.name===String(f.get("name")||"").trim()&&onlyDigits(x.phone)===phone);
+  if(!u) return toast("등록된 직원 회원정보를 찾을 수 없습니다.");
+  const temp=createTempPassword();u.password=temp;u.mustChangePassword=true;u.tempPasswordIssuedAt=new Date().toISOString();
+  save();await sendKakaoTemplate(phone,"WM_PASSWORD_RESET",{"#{이름}":u.name,"#{임시비밀번호}":temp},{kind:"직원 비밀번호 초기화",targetId:u.id});
+  toast("임시 비밀번호가 발급되었습니다. 카카오 발송 로그를 확인해 주세요.");loginTab="user";render();
 }
-
+async function requestCustomerPasswordReset(e){
+  e.preventDefault();const f=new FormData(e.target);const phone=onlyDigits(f.get("phone"));
+  if(!isValidMobile(phone)) return toast("휴대폰 번호를 확인해 주세요.");
+  const c=(state.customers||[]).find(x=>!x.purgedAt&&x.name===String(f.get("name")||"").trim()&&onlyDigits(x.phone)===phone);
+  if(!c) return toast("등록된 일반회원 정보를 찾을 수 없습니다. 개인정보가 삭제된 회원은 다시 가입해 주세요.");
+  const temp=createTempPassword();c.password=temp;c.mustChangePassword=true;c.tempPasswordIssuedAt=new Date().toISOString();
+  save();await sendKakaoTemplate(phone,"SN_PASSWORD_RESET",{"#{이름}":c.name,"#{임시비밀번호}":temp},{kind:"일반회원 비밀번호 초기화",targetId:c.id});
+  toast("임시 비밀번호가 발급되었습니다. 카카오 알림톡을 확인해 주세요.");loginTab="customerLogin";render();
+}
 function loginCustomer(e){
   e.preventDefault();
   const f=new FormData(e.target);
@@ -633,7 +650,7 @@ function signupCustomer(e){
   loginTab="customerLogin";
   render();
 }
-function privacySimpleTerms(){return `㈜위드메디컬은 사계펜션 예약 및 이용 안내를 위해 이름, 생년월일, 휴대전화번호를 수집·이용합니다. 수집 정보는 숙소 예약 확인, 본인 확인, 예약 안내 및 이용 관련 연락에만 사용되며, 숙소 이용 완료 후 7일 이내 안전하게 폐기합니다. 동의하지 않을 경우 숙소 예약 서비스를 이용할 수 없습니다.`;}
+function privacySimpleTerms(){return `㈜위드메디컬은 스페이스 농농 예약 및 이용 안내를 위해 이름, 생년월일, 휴대전화번호를 수집·이용합니다. 수집 정보는 숙소 예약 확인, 본인 확인, 예약 안내 및 이용 관련 연락에만 사용되며, 숙소 이용 완료 후 7일 이내 안전하게 폐기합니다. 동의하지 않을 경우 숙소 예약 서비스를 이용할 수 없습니다.`;}
 function toggleCustomerAllAgree(checked){
   document.querySelectorAll('.customer-signup-form input[type="checkbox"]').forEach(cb=>{ cb.checked=checked; });
 }
@@ -670,7 +687,7 @@ function purgeExpiredCustomerPrivacy(){
     const purgeDate=localDate(lastCheckout); purgeDate.setDate(purgeDate.getDate()+cutoffDays);
     if(purgeDate<=now){
       const masked=`일반고객-${c.id.slice(-4)}`;
-      my.forEach(r=>{r.userName=masked;r.phone="폐기완료";r.payer="폐기완료";r.memo=r.memo?"개인정보 폐기 완료":"";});
+      my.forEach(r=>{r.userName=masked;r.phone="폐기완료";r.payer="폐기완료";r.personalDataPurged=true;r.personalDataPurgedAt=new Date().toISOString();});
       c.name=masked;c.birth="폐기완료";c.phone="폐기완료";c.password="";c.purgedAt=new Date().toLocaleString();
       state.publicPrivacyPurgeLogs.unshift({id:uid(),customerId:c.id,customerName:masked,lastCheckout,purgedAt:c.purgedAt});
       changed=true;
@@ -679,18 +696,16 @@ function purgeExpiredCustomerPrivacy(){
   if(changed) save();
 }
 function loginView(){
-  const logo=state.settings.logoUrl?`<img src="${state.settings.logoUrl}">`:`W`;
   const customerTerms=privacySimpleTerms();
   app.innerHTML=`<div class="loginbox panel v27-login">
-    <div class="brand v27-brand"><div class="logo">${logo}</div><div><b>WITH Medical</b><small>사계펜션 예약 · 직원 복지몰</small></div></div>
     ${loginTab==='gateway'?`<h1 class="gateway-title">필요한 서비스를 선택하세요.</h1>
       <div class="entry-grid">
         <div class="entry-card pension">
           <div class="entry-visual" aria-hidden="true">
             <svg viewBox="0 0 120 120" role="img"><circle cx="60" cy="60" r="52" fill="#eaf1ff"/><path d="M28 68h64" stroke="#2357d9" stroke-width="5" stroke-linecap="round"/><path d="M34 67V50l26-20 26 20v17" fill="none" stroke="#2357d9" stroke-width="6" stroke-linejoin="round"/><path d="M53 67V52h15v15" fill="#2357d9"/><path d="M83 40c9-11 19-5 14 7M84 41c0-11 11-18 18-9" fill="none" stroke="#2357d9" stroke-width="4" stroke-linecap="round"/><path d="M25 83c8-6 15 6 23 0s15 6 23 0 15 6 24 0" fill="none" stroke="#2357d9" stroke-width="4" stroke-linecap="round"/></svg>
           </div>
-          <h2>사계펜션<br>예약</h2>
-          <p class="muted">제주 사계펜션 예약 및 예약조회</p>
+          <h2>스페이스 농농<br>예약</h2>
+          <p class="muted">제주 스페이스 농농 예약 및 예약조회</p>
           <button onclick="loginTab='customerLogin';render()">입장하기</button>
         </div>
         <div class="entry-card staff">
@@ -703,14 +718,14 @@ function loginView(){
         </div>
       </div>`:""}
     ${loginTab!=='gateway'?`<button class="secondary" onclick="loginTab='gateway';render()">← 처음 화면으로</button>`:""}
-    ${loginTab==='customerLogin'?`<h1>사계펜션 예약</h1><div class="tabs"><button class="active">일반고객 로그인</button><button onclick="loginTab='customerSignup';render()">회원가입</button></div>
+    ${loginTab==='customerLogin'?`<h1>스페이스 농농 예약</h1><div class="tabs"><button class="active">일반고객 로그인</button><button onclick="loginTab='customerSignup';render()">회원가입</button><button onclick="loginTab='customerReset';render()">비밀번호 초기화</button></div>
       <form class="form" onsubmit="loginCustomer(event)">
         <label class="wide">휴대폰 번호<input name="phone" placeholder="01012345678" inputmode="numeric" pattern="[0-9]{10,11}" required></label>
         <label class="wide">비밀번호<input type="password" name="password" required></label>
         <button class="wide">로그인</button>
         <p class="wide muted">예약조회와 숙소예약만 이용할 수 있습니다.</p>
       </form>`:""}
-    ${loginTab==='customerSignup'?`<h1>일반고객 회원가입</h1><div class="tabs"><button onclick="loginTab='customerLogin';render()">로그인</button><button class="active">회원가입</button></div>
+    ${loginTab==='customerSignup'?`<h1>일반고객 회원가입</h1><div class="tabs"><button onclick="loginTab='customerLogin';render()">로그인</button><button class="active">회원가입</button><button onclick="loginTab='customerReset';render()">비밀번호 초기화</button></div>
       <form class="form customer-signup-form" onsubmit="signupCustomer(event)">
         <label>이름<input name="name" required></label>
         <label>생년월일<input type="date" name="birth" required></label>
@@ -724,6 +739,13 @@ function loginView(){
         <label class="wide checkline"><input type="checkbox" name="ageAgree" required> 만 19세 이상입니다.</label>
         <label class="wide checkline"><input type="checkbox" name="kakaoAgree"> 예약 안내 및 승인 알림을 위한 카카오 알림 수신에 동의합니다.</label>
         <button class="wide">회원가입</button>
+      </form>`:""}
+    ${loginTab==='customerReset'?`<h1>일반회원 비밀번호 초기화</h1><div class="tabs"><button onclick="loginTab='customerLogin';render()">로그인</button><button onclick="loginTab='customerSignup';render()">회원가입</button><button class="active">비밀번호 초기화</button></div>
+      <form class="form" onsubmit="requestCustomerPasswordReset(event)">
+        <label class="wide">이름<input name="name" required></label>
+        <label class="wide">휴대폰 번호<input name="phone" placeholder="01012345678" inputmode="numeric" pattern="[0-9]{10,11}" required></label>
+        <button class="wide">임시 비밀번호 발급</button>
+        <p class="wide muted">등록 정보 확인 후 임시 비밀번호를 카카오 알림톡으로 발송합니다.</p>
       </form>`:""}
     ${loginTab==='user'||loginTab==='signup'||loginTab==='reset'||loginTab==='admin'?`<h1>직원 복지몰 로그인</h1><div class="tabs">
       <button class="${loginTab==='user'?'active':''}" onclick="loginTab='user';render()">직원 로그인</button>
@@ -753,7 +775,7 @@ function loginView(){
       <label class="wide">이름<input name="name" required></label>
       <label class="wide">휴대폰 번호<input name="phone" placeholder="01012345678" inputmode="numeric" pattern="[0-9]{10,11}" required></label>
       <button class="wide">비밀번호 초기화 요청</button>
-      <p class="wide muted">관리자가 요청을 확인한 후 임시 비밀번호로 변경해 줍니다.</p>
+      <p class="wide muted">회원정보 확인 후 임시 비밀번호를 카카오 알림톡으로 발송합니다.</p>
     </form>`:""}
     ${loginTab==='admin'?`<form class="form" onsubmit="loginAdmin(event)">
       <label class="wide">관리자 ID<input name="id" required></label>
@@ -801,7 +823,7 @@ function mobileBottomNav(){
   </nav>`;
 }
 
-function layout(content){const u=user();const roleLabel=u.role==="admin"?"관리자":(u.role==="customer"?"일반고객":"임직원");const brandTitle=u.role==="customer"?"사계펜션 예약":"WITH Welfare Mall";return `<div class="top"><div class="topin"><div class="brand"><div class="logo">${state.settings.logoUrl?`<img src="${state.settings.logoUrl}">`:`W`}</div><div><b>${brandTitle}</b><small>${u.name} · ${roleLabel}</small></div></div><div class="nav">${navItems().map(item=>`<button class="${page===item.key?'active':''}" onclick="setPage('${item.key}')">${item.name}</button>`).join("")}<button class="${page==='notifications'?'active':''}" onclick="setPage('notifications')">🔔${unreadNotificationCount()?`(${unreadNotificationCount()})`:""}</button>${u.role==="admin"?`<button class="${page==='admin'?'active':''}" onclick="setPage('admin')">관리자</button>`:`<button class="${page==='mypage'?'active':''}" onclick="setPage('mypage')">${u.role==="customer"?"예약조회":"내 정보"}</button>`}<button class="gray" onclick="logout()">로그아웃</button></div></div></div><div class="wrap">${content}</div>${mobileBottomNav()}<div class="footer">WITH Welfare Mall · 제주 사계펜션 복지몰</div>`;}
+function layout(content){const u=user();const roleLabel=u.role==="admin"?"관리자":(u.role==="customer"?"일반고객":"임직원");const brandTitle=u.role==="customer"?"스페이스 농농 예약":"WITH Welfare Mall";const activeLogo=u.role==="customer"?(state.settings.publicLogoUrl||state.settings.logoUrl):state.settings.logoUrl;return `<div class="top"><div class="topin"><div class="brand"><div class="logo">${activeLogo?`<img src="${activeLogo}">`:`W`}</div><div><b>${brandTitle}</b><small>${u.name} · ${roleLabel}</small></div></div><div class="nav">${navItems().map(item=>`<button class="${page===item.key?'active':''}" onclick="setPage('${item.key}')">${item.name}</button>`).join("")}<button class="${page==='notifications'?'active':''}" onclick="setPage('notifications')">🔔${unreadNotificationCount()?`(${unreadNotificationCount()})`:""}</button>${u.role==="admin"?`<button class="${page==='admin'?'active':''}" onclick="setPage('admin')">관리자</button>`:`<button class="${page==='mypage'?'active':''}" onclick="setPage('mypage')">${u.role==="customer"?"예약조회":"내 정보"}</button>`}<button class="gray" onclick="logout()">로그아웃</button></div></div></div><div class="wrap">${content}</div>${mobileBottomNav()}<div class="footer">WITH Welfare Mall · 제주 스페이스 농농 복지몰</div>`;}
 
 
 function navItems(){
@@ -1024,7 +1046,7 @@ function home(){
   const usedRate=u.role==="admin"?0:Math.min(100,Math.round((used/limit)*100));
   const buttons=(state.settings.homeButtons||[]).filter(b=>b.label&&b.page&&ensureEnabledPage(b.page)).map((b,i)=>`<button class="${i===0?'':'secondary'}" onclick="setPage('${b.page}')">${b.label}</button>`).join(" ");
   const featureItems=[
-    ["stay","🏡",pageLabel("stay"),"제주 사계펜션 예약 및 사용 현황"],
+    ["stay","🏡",pageLabel("stay"),"제주 스페이스 농농 예약 및 사용 현황"],
     ["family","🎁",pageLabel("family"),"복지신청 및 접수 내역"],
     ["event","🎉",pageLabel("event"),"사내 이벤트 참여 신청"],
 
@@ -1078,7 +1100,7 @@ function stay(){
   const isCustomer=u.role==="customer";
   const used=(u.role==="admin"||isCustomer)?0:annualUsedNights(u.id);
   const myRows=state.reservations.filter(r=>r.userId===u.id);
-  return layout(`<section class="section"><h2>제주 사계펜션 숙소 예약</h2><p class="muted">${staySummaryText()}</p><div class="grid2">${state.rooms.map(r=>`<div class="card room-card">${roomPhotoBlock(r)}<div class="room-body"><h3>${r.name}</h3><p class="muted">기본 ${r.basePeople}명 · 최대 ${r.maxPeople}명<br>${roomUseTimeText(r)}</p><button type="button" class="reserve-open-btn" data-room-id="${r.id}" onclick="showReserve('${r.id}');return false;">예약 신청</button></div></div>`).join("")}</div></section><section id="reserveForm" class="section"></section><section class="section panel"><div class="cal-head"><h2>예약 현황 캘린더</h2><div><button class="secondary" onclick="moveMonth(-1)">이전</button> <b>${calDate.getFullYear()}년 ${calDate.getMonth()+1}월</b> <button class="secondary" onclick="moveMonth(1)">다음</button></div></div>${calendar()}</section><section class="section"><h2>${isCustomer?"예약조회":"내 예약 현황"}</h2>${isCustomer?`<p class="muted">일반고객은 본인 예약만 확인할 수 있습니다.</p>`:`<p class="muted">올해 사용/신청 박수: ${used}박 / ${state.settings.annualNightLimit}박</p>`}${reservationTable(myRows,false)}</section>`);
+  return layout(`<section class="section"><h2>제주 스페이스 농농 숙소 예약</h2><p class="muted">${staySummaryText()}</p><div class="grid2">${state.rooms.map(r=>`<div class="card room-card">${roomPhotoBlock(r)}<div class="room-body"><h3>${r.name}</h3><p class="muted">기본 ${r.basePeople}명 · 최대 ${r.maxPeople}명<br>${roomUseTimeText(r)}</p><button type="button" class="reserve-open-btn" data-room-id="${r.id}" onclick="showReserve('${r.id}');return false;">예약 신청</button></div></div>`).join("")}</div></section><section id="reserveForm" class="section"></section><section class="section panel"><div class="cal-head"><h2>예약 현황 캘린더</h2><div><button class="secondary" onclick="moveMonth(-1)">이전</button> <b>${calDate.getFullYear()}년 ${calDate.getMonth()+1}월</b> <button class="secondary" onclick="moveMonth(1)">다음</button></div></div>${calendar()}</section><section class="section"><h2>${isCustomer?"예약조회":"내 예약 현황"}</h2>${isCustomer?`<p class="muted">일반고객은 본인 예약만 확인할 수 있습니다.</p>`:`<p class="muted">올해 사용/신청 박수: ${used}박 / ${state.settings.annualNightLimit}박</p>`}${reservationTable(myRows,false)}</section>`);
 }
 function moveMonth(n){calDate.setMonth(calDate.getMonth()+n);render();}
 function calendar(){
@@ -1126,6 +1148,7 @@ function showReserve(roomId){
   const el=document.getElementById("reserveForm");
   if(!el) return toast("예약 신청 영역을 찾을 수 없습니다.");
   el.innerHTML=`<div class="panel"><h2>${room.name} 예약 신청</h2><p class="muted">기본 ${room.basePeople||5}명 · 최대 ${room.maxPeople||8}명 · ${roomUseTimeText(room)}</p><form class="form" onsubmit="submitReservation(event,'${room.id}')" oninput="updateEstimate(this)" onchange="updateEstimate(this)">
+    <div class="wide v28-range-box"><div class="v28-range-title"><b>달력에서 기간 선택</b><span class="muted">기존 날짜 직접 입력도 그대로 사용할 수 있습니다.</span></div><div id="v28RangeCalendar">${rangeCalendarHtml(room.id)}</div></div>
     <label>체크인<input type="date" name="checkin" required></label>
     <label>체크아웃<input type="date" name="checkout" required></label>
     <label>인원<input type="number" name="people" min="1" max="${room.maxPeople||8}" value="${room.basePeople||5}" required></label>
@@ -1491,7 +1514,7 @@ function mypage(){
   const u=user();
   if(u.role==="customer"){
     const myRows=state.reservations.filter(r=>r.userId===u.id);
-    return layout(`<section class="section"><h2>예약조회</h2><p class="muted">일반고객은 사계펜션 예약 관련 정보만 확인할 수 있습니다.</p>${reservationTable(myRows,false)}</section><section class="section"><h2>내 정보</h2><div class="group-box"><div class="group-section"><h3>일반고객 정보</h3><table class="table"><tbody><tr><th>이름</th><td>${u.name}</td></tr><tr><th>생년월일</th><td>${u.birth||"-"}</td></tr><tr><th>휴대폰 번호</th><td>${u.phone}</td></tr><tr><th>개인정보 보관</th><td>숙소 이용 완료 후 7일 이내 폐기</td></tr></tbody></table></div><div class="group-section"><h3>비밀번호 변경</h3><form class="form" onsubmit="changeMyPassword(event)"><label>현재 비밀번호<input type="password" name="currentPassword" required></label><label>새 비밀번호<input type="password" name="newPassword" required></label><label class="wide">새 비밀번호 확인<input type="password" name="newPasswordConfirm" required></label><button class="wide">비밀번호 변경</button></form></div></div></section>`);
+    return layout(`<section class="section"><h2>예약조회</h2><p class="muted">일반고객은 스페이스 농농 예약 관련 정보만 확인할 수 있습니다.</p>${reservationTable(myRows,false)}</section><section class="section"><h2>내 정보</h2><div class="group-box"><div class="group-section"><h3>일반고객 정보</h3><table class="table"><tbody><tr><th>이름</th><td>${u.name}</td></tr><tr><th>생년월일</th><td>${u.birth||"-"}</td></tr><tr><th>휴대폰 번호</th><td>${u.phone}</td></tr><tr><th>개인정보 보관</th><td>숙소 이용 완료 후 7일 이내 폐기</td></tr></tbody></table></div><div class="group-section"><h3>비밀번호 변경</h3><form class="form" onsubmit="changeMyPassword(event)"><label>현재 비밀번호<input type="password" name="currentPassword" required></label><label>새 비밀번호<input type="password" name="newPassword" required></label><label class="wide">새 비밀번호 확인<input type="password" name="newPasswordConfirm" required></label><button class="wide">비밀번호 변경</button></form></div></div></section>`);
   }
   return layout(`<section class="section"><h2>내 정보</h2>
     <div class="group-box">
@@ -1551,39 +1574,32 @@ async function deleteAllVisibleNotifications(){const rows=visibleNotifications()
 async function deleteKakaoOutbox(id){if(!confirm("카카오 발송 대기 이력을 삭제할까요?"))return;try{await deleteServerRecord("kakaoOutbox",id);state.kakaoOutbox=(state.kakaoOutbox||[]).filter(k=>k.id!==id);safeLocalSave();toast("카카오 발송 대기 이력이 삭제되었습니다.");render();}catch(err){toast("삭제 실패: "+(err.message||"오류"));}}
 async function clearKakaoOutbox(){const rows=state.kakaoOutbox||[];if(!rows.length)return toast("삭제할 발송 대기 이력이 없습니다.");if(!confirm(`카카오 발송 대기 이력 ${rows.length}건을 모두 삭제할까요?`))return;try{setOperationBusy(true,"발송 대기 이력을 삭제 중입니다.");for(const row of rows)await deleteServerRecord("kakaoOutbox",row.id);state.kakaoOutbox=[];safeLocalSave();setOperationBusy(false);toast("카카오 발송 대기 이력을 모두 삭제했습니다.");render();}catch(err){setOperationBusy(false);toast("전체삭제 실패: "+(err.message||"오류"));}}
 
+const KAKAO_TEMPLATE_NAMES={
+ WM_STAY_RECEIVED:"WM_숙소예약접수",WM_STAY_APPROVED:"WM_숙소예약승인",WM_STAY_REJECTED:"WM_숙소예약반려",
+ WM_WELFARE_RECEIVED:"WM_복지신청접수",WM_WELFARE_APPROVED:"WM_복지승인",WM_WELFARE_REJECTED:"WM_복지반려",
+ WM_EVENT_RECEIVED:"WM_행사신청접수",WM_EVENT_APPROVED:"WM_행사승인",WM_EVENT_REJECTED:"WM_행사반려",WM_PASSWORD_RESET:"WM_비밀번호초기화",
+ SN_STAY_RECEIVED:"SN_예약접수",SN_PAYMENT_GUIDE:"SN_입금안내",SN_PAYMENT_CONFIRMED:"SN_입금확인",SN_STAY_APPROVED:"SN_예약승인",SN_STAY_REJECTED:"SN_예약반려",SN_STAY_CANCELED:"SN_예약취소",SN_CHECKIN_GUIDE:"SN_체크인안내",SN_CHECKOUT_GUIDE:"SN_체크아웃안내",SN_PASSWORD_RESET:"SN_비밀번호초기화"
+};
+function kakaoTemplateRows(){const t=(state.notificationSettings||{}).templateIds||{};return Object.keys(KAKAO_TEMPLATE_NAMES).map(k=>`<tr><td>${KAKAO_TEMPLATE_NAMES[k]}</td><td><code>${k}</code></td><td><input name="tpl_${k}" value="${t[k]||''}" required></td></tr>`).join("");}
 function kakaoReadyPanel(){
-  const n=state.notificationSettings||{};
-  return `<div class="panel"><p class="muted">카카오 실제 발송은 다음 버전에서 활성화합니다. V26에서는 API 정보 입력, 테스트, 사용 ON/OFF 구조까지만 준비합니다.</p>
-  <form class="form" onsubmit="saveKakaoSettings(event)">
-    <label>업체/Provider<input name="kakaoProvider" value="${n.kakaoProvider||''}" placeholder="예: Solapi, NHN Cloud"></label>
-    <label>발신 프로필/채널 키<input name="kakaoSenderKey" value="${n.kakaoSenderKey||''}" placeholder="발신 프로필 키"></label>
-    <label>API KEY<input name="kakaoApiKey" value="${n.kakaoApiKey||''}" placeholder="API KEY"></label>
-    <label>SECRET KEY<input type="password" name="kakaoSecretKey" value="${n.kakaoSecretKey||''}" placeholder="SECRET KEY"></label>
-    <label class="wide">사용여부<select name="kakaoEnabled"><option value="false" ${!n.kakaoEnabled?'selected':''}>비활성</option><option value="true" ${n.kakaoEnabled?'selected':''}>활성 준비</option></select></label>
-    <button>카카오 설정 저장</button><button type="button" class="secondary" onclick="testKakaoSettings()">연동 테스트</button><button type="button" onclick="toggleKakaoEnabled()">카카오 알림 사용/중지</button>
-  </form>
-  <div class="grid3" style="margin-top:14px"><div class="kpi-card"><small>웹 알림</small><strong>${(state.notifications||[]).length}</strong></div><div class="kpi-card"><small>카카오 발송대기</small><strong>${(state.kakaoOutbox||[]).length}</strong></div><div class="kpi-card"><small>연동상태</small><strong>${n.kakaoEnabled?'활성 준비':'미연동'}</strong></div></div></div>`;
+ const n=state.notificationSettings||{};const logs=state.kakaoLogs||[];const ok=logs.filter(x=>x.status==="성공").length;const fail=logs.filter(x=>x.status==="실패").length;
+ return `<div class="panel"><p class="muted">Cloudflare 환경변수를 우선 사용합니다. 관리자 직접 입력값은 환경변수가 없을 때만 보조 방식으로 사용됩니다.</p><form class="form" onsubmit="saveKakaoSettings(event)">
+ <label>Provider<input name="kakaoProvider" value="${n.kakaoProvider||'SOLAPI'}"></label><label>PFID<input name="pfId" value="${n.pfId||''}" required></label>
+ <label>발신번호<input name="senderPhone" value="${n.senderPhone||''}" placeholder="등록된 발신번호"></label><label>테스트 수신번호<input name="testPhone" value="${n.testPhone||''}" placeholder="01012345678"></label>
+ <label>SOLAPI_API_KEY<input name="solapiApiKey" value="${n.solapiApiKey||''}" autocomplete="off" placeholder="Cloudflare 환경변수 또는 관리자 직접 입력"></label>
+ <label>SOLAPI_API_SECRET<input type="password" name="solapiApiSecret" value="${n.solapiApiSecret||''}" autocomplete="new-password" placeholder="Cloudflare 환경변수 또는 관리자 직접 입력"></label>
+ <label class="wide">사용여부<select name="kakaoEnabled"><option value="false" ${!n.kakaoEnabled?'selected':''}>비활성</option><option value="true" ${n.kakaoEnabled?'selected':''}>활성</option></select></label>
+ <button>설정 저장</button><button type="button" class="secondary" onclick="testKakaoSettings()">테스트 발송</button><button type="button" class="secondary" onclick="diagnoseKakao()">상태 진단</button>
+ <details class="wide" style="margin-top:8px"><summary><b>템플릿 ID 19개 직접 수정</b></summary><div class="table-scroll"><table class="table"><thead><tr><th>템플릿 이름</th><th>이벤트 키</th><th>Template ID</th></tr></thead><tbody>${kakaoTemplateRows()}</tbody></table></div></details></form>
+ <div class="grid3" style="margin-top:14px"><div class="kpi-card"><small>발송 성공</small><strong>${ok}</strong></div><div class="kpi-card"><small>발송 실패</small><strong>${fail}</strong></div><div class="kpi-card"><small>상태</small><strong>${n.kakaoEnabled?'활성':'비활성'}</strong></div></div></div>`;
 }
-function notificationAdminGroup(){return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 연동 준비</h3><span class="muted">V28 실제 연동 전 설정 관리</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>카카오 발송 대기 이력</h3><span class="muted">실제 발송 전 준비 데이터</span></div><div class="bulk-toolbar"><button class="danger" onclick="clearKakaoOutbox()">전체삭제</button></div>${(state.kakaoOutbox||[]).length?`<table class="table"><thead><tr><th>대상</th><th>종류</th><th>제목</th><th>상태</th><th>일시</th><th>관리</th></tr></thead><tbody>${state.kakaoOutbox.map(k=>`<tr><td>${k.targetPhone||"-"}</td><td>${k.kind||""}</td><td>${k.title||""}<br><span class="muted">${k.message||""}</span></td><td>${k.status||"발송대기"}</td><td>${k.createdAt||""}</td><td><button class="danger" onclick="deleteKakaoOutbox('${k.id}')">삭제</button></td></tr>`).join("")}</tbody></table>`:`<div class="panel empty">발송 대기 이력이 없습니다.</div>`}</div></div>`;}
-
-function saveKakaoSettings(e){
-  e.preventDefault();
-  const f=new FormData(e.target);
-  state.notificationSettings={...(state.notificationSettings||{}),kakaoProvider:f.get("kakaoProvider"),kakaoSenderKey:f.get("kakaoSenderKey"),kakaoApiKey:f.get("kakaoApiKey"),kakaoSecretKey:f.get("kakaoSecretKey"),kakaoEnabled:f.get("kakaoEnabled")==="true"};
-  save();toast("카카오 연동 준비 설정이 저장되었습니다.");render();
-}
-function testKakaoSettings(){
-  const n=state.notificationSettings||{};
-  if(!n.kakaoProvider||!n.kakaoSenderKey||!n.kakaoApiKey||!n.kakaoSecretKey) return toast("업체, 발신 프로필, API KEY, SECRET KEY를 모두 입력해 주세요.");
-  toast("연동 테스트 준비 완료: 실제 발송은 다음 버전에서 활성화됩니다.");
-}
-function toggleKakaoEnabled(){
-  const n=state.notificationSettings||{};
-  if(!n.kakaoProvider||!n.kakaoSenderKey||!n.kakaoApiKey||!n.kakaoSecretKey) return toast("카카오 정보를 먼저 입력해 주세요.");
-  n.kakaoEnabled=!n.kakaoEnabled;
-  state.notificationSettings=n;
-  save();toast(n.kakaoEnabled?"카카오 알림 활성 준비 상태입니다.":"카카오 알림을 비활성화했습니다.");render();
-}
+function notificationAdminGroup(){const logs=state.kakaoLogs||[];return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 설정</h3><span class="muted">V28.0.1 Production</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>발송 로그</h3><span class="muted">성공·실패·재발송</span></div>${logs.length?`<table class="table"><thead><tr><th>일시</th><th>대상</th><th>종류</th><th>템플릿</th><th>상태</th><th>관리</th></tr></thead><tbody>${logs.map(x=>`<tr><td>${x.createdAt||''}</td><td>${x.to||''}</td><td>${x.kind||''}</td><td><code>${x.templateId||''}</code></td><td>${x.status||''}<br><span class="muted">${x.error||''}</span></td><td><button class="secondary" onclick="resendKakao('${x.id}')">재발송</button></td></tr>`).join('')}</tbody></table>`:`<div class="panel empty">발송 로그가 없습니다.</div>`}</div></div>`;}
+function saveKakaoSettings(e){e.preventDefault();const f=new FormData(e.target);const templateIds={...((state.notificationSettings||{}).templateIds||{})};Object.keys(KAKAO_TEMPLATE_NAMES).forEach(k=>{const v=String(f.get('tpl_'+k)||'').trim();if(v)templateIds[k]=v;});state.notificationSettings={...(state.notificationSettings||{}),kakaoProvider:f.get('kakaoProvider')||'SOLAPI',pfId:String(f.get('pfId')||'').trim(),senderPhone:onlyDigits(f.get('senderPhone')),testPhone:onlyDigits(f.get('testPhone')),solapiApiKey:String(f.get('solapiApiKey')||'').trim(),solapiApiSecret:String(f.get('solapiApiSecret')||''),templateIds,kakaoEnabled:f.get('kakaoEnabled')==='true'};save();toast('카카오 설정과 템플릿 ID를 저장했습니다.');render();}
+async function testKakaoSettings(){const n=state.notificationSettings||{};if(!isValidMobile(n.testPhone))return toast('테스트 수신번호를 입력해 주세요.');await sendKakaoTemplate(n.testPhone,'SN_PASSWORD_RESET',{'#{이름}':'테스트','#{임시비밀번호}':'123456'},{kind:'관리자 테스트 발송'});render();}
+async function diagnoseKakao(){try{const n=state.notificationSettings||{};const headers={'Content-Type':'application/json'};if(n.solapiApiKey)headers['X-SOLAPI-API-KEY']=n.solapiApiKey;if(n.solapiApiSecret)headers['X-SOLAPI-API-SECRET']=n.solapiApiSecret;const r=await fetch('/api/kakao-send',{method:'POST',headers,body:JSON.stringify({diagnose:true})});const data=await r.json().catch(()=>({}));toast(r.ok?(data.message||'카카오 서버 설정이 확인되었습니다.'):(data.message||'서버 설정을 확인해 주세요.'));}catch(e){toast('서버 함수 연결 실패: '+e.message);}}
+async function sendKakaoTemplate(to,key,variables={},meta={}){const n=state.notificationSettings||{};const templateId=(n.templateIds||{})[key];const log={id:uid(),to:onlyDigits(to),key,templateId,variables,kind:meta.kind||key,targetId:meta.targetId||'',status:'발송대기',createdAt:new Date().toLocaleString()};state.kakaoLogs.unshift(log);save();if(!n.kakaoEnabled){log.status='실패';log.error='카카오 알림이 비활성화되어 있습니다.';save();return log;}if(!templateId){log.status='실패';log.error='Template ID가 설정되지 않았습니다.';save();return log;}try{const headers={'Content-Type':'application/json'};if(n.solapiApiKey)headers['X-SOLAPI-API-KEY']=n.solapiApiKey;if(n.solapiApiSecret)headers['X-SOLAPI-API-SECRET']=n.solapiApiSecret;const res=await fetch('/api/kakao-send',{method:'POST',headers,body:JSON.stringify({to:log.to,pfId:n.pfId,templateId,variables,from:n.senderPhone})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.message||data.error||('HTTP '+res.status));log.status='성공';log.response=data;log.sentAt=new Date().toLocaleString();}catch(err){log.status='실패';log.error=err.message||String(err);}save();return log;}
+async function resendKakao(id){const x=(state.kakaoLogs||[]).find(v=>v.id===id);if(!x)return toast('로그를 찾을 수 없습니다.');await sendKakaoTemplate(x.to,x.key,x.variables||{},{kind:(x.kind||x.key)+' 재발송',targetId:x.targetId});toast('재발송을 처리했습니다.');render();}
+function toggleKakaoEnabled(){state.notificationSettings.kakaoEnabled=!state.notificationSettings.kakaoEnabled;save();render();}
 function admin(){
   const tabs=[
     ["adminDashboard","대시보드"],
@@ -1660,6 +1676,13 @@ function homeAdminGroup(){
         <button class="wide">로고 변경</button>
       </form>
     </div>
+    <div class="group-section"><div class="subtle-title"><h3>일반회원 전용 로고</h3><span class="muted">일반회원 로그인 후 상단에만 적용</span></div>
+      <div class="brand" style="margin-bottom:14px"><div class="logo">${state.settings.publicLogoUrl?`<img src="${state.settings.publicLogoUrl}">`:(state.settings.logoUrl?`<img src="${state.settings.logoUrl}">`:`W`)}</div><div><b>일반회원용 현재 로고</b><small>미등록 시 기본 로고를 사용합니다.</small></div></div>
+      <form class="form" onsubmit="savePublicLogo(event)">
+        <label class="wide">일반회원 로고 이미지<input type="file" name="publicLogo" accept="image/*" required></label>
+        <button>일반회원 로고 변경</button><button type="button" class="secondary" onclick="resetPublicLogo()">기본 로고 사용</button>
+      </form>
+    </div>
     <div class="group-section"><div class="subtle-title"><h3>홈 화면 문구 수정</h3></div>
       <form class="form" onsubmit="saveHomeText(event)">
         <label>상단 배지<input name="homeBadge" value="${state.settings.homeBadge||""}"></label>
@@ -1696,6 +1719,16 @@ function saveLogo(e){
   reader.onload=()=>{state.settings.logoUrl=reader.result;save();toast("로고가 변경되었습니다.");render();};
   reader.readAsDataURL(file);
 }
+function savePublicLogo(e){
+  e.preventDefault();
+  const file=e.target.publicLogo.files[0];
+  if(!file) return toast("일반회원 로고 파일을 선택해 주세요.");
+  if(!file.type.startsWith("image/")) return toast("이미지 파일만 가능합니다.");
+  const reader=new FileReader();
+  reader.onload=()=>{state.settings.publicLogoUrl=reader.result;save();toast("일반회원 전용 로고가 변경되었습니다.");render();};
+  reader.readAsDataURL(file);
+}
+function resetPublicLogo(){state.settings.publicLogoUrl="";save();toast("일반회원 로고를 기본 로고로 변경했습니다.");render();}
 function saveHomeText(e){
   e.preventDefault();
   const f=new FormData(e.target);
@@ -2517,7 +2550,7 @@ window.updateEstimate=updateEstimate;
 window.moveMonth=moveMonth;
 
 function render(){
-  finalHotfixCleanState();purgeExpiredCustomerPrivacy();if(!session)return loginView();if(!user()){logout();return;}if(user().role==="customer"&&page==="home")page="stay";if(!ensureEnabledPage(page)){page=user().role==="customer"?"stay":"home";}if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount"){page="home";app.innerHTML=home();}if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="notifications")app.innerHTML=notificationsPage();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
+  finalHotfixCleanState();purgeExpiredCustomerPrivacy();if(!session)return loginView();if(!user()){logout();return;}if(user().role==="customer"&&page==="home")page="stay";if(user().mustChangePassword)page="passwordChange";if(page!=="passwordChange"&&!ensureEnabledPage(page)){page=user().role==="customer"?"stay":"home";}if(page==="passwordChange")app.innerHTML=passwordChangeView();if(page==="home")app.innerHTML=home();if(page==="stay")app.innerHTML=stay();if(page==="family")app.innerHTML=family();if(page==="event")app.innerHTML=eventPage();if(page==="discount"){page="home";app.innerHTML=home();}if(page==="vacation"){page="home";app.innerHTML=home();}if(page==="notice")app.innerHTML=notice();if(page==="notifications")app.innerHTML=notificationsPage();if(page==="admin")app.innerHTML=admin();if(page==="mypage")app.innerHTML=mypage();}
 
 function attachGlobalHandlers(){
   document.removeEventListener("click",reserveDelegatedClick,true);
@@ -2557,6 +2590,16 @@ function expirePendingReservations(){
   });
   if(changed) save();
 }
+
+function passwordChangeView(){const u=user();return layout(`<section class="section"><div class="panel password-change-panel"><h2>새 비밀번호 설정</h2><p class="muted">임시 비밀번호로 로그인했습니다. 계속 이용하려면 새 비밀번호로 변경해야 합니다.</p><form class="form" onsubmit="changeTemporaryPassword(event)"><label class="wide">새 비밀번호<input type="password" name="password" minlength="4" required></label><label class="wide">새 비밀번호 확인<input type="password" name="passwordConfirm" minlength="4" required></label><button class="wide">비밀번호 변경</button></form></div></section>`);}
+function changeTemporaryPassword(e){e.preventDefault();const f=new FormData(e.target);if(f.get('password')!==f.get('passwordConfirm'))return toast('비밀번호가 일치하지 않습니다.');const u=user();u.password=f.get('password');u.mustChangePassword=false;u.tempPasswordChangedAt=new Date().toISOString();save();page=u.role==='customer'?'stay':'home';toast('비밀번호가 변경되었습니다.');render();}
+let v28RangeStart='',v28RangeEnd='',v28RangeRoom='';
+function dateAdd(ds,n){const d=localDate(ds);d.setDate(d.getDate()+n);return fmtLocalDate(d);}
+function roomDayStatus(roomId,ds){if((state.roomBlocks||[]).some(b=>b.roomId===roomId&&ds>=b.start&&ds<b.end))return 'block';const r=(state.reservations||[]).find(x=>x.roomId===roomId&&x.status!=='취소'&&x.status!=='반려'&&ds>=x.checkin&&ds<x.checkout);if(r)return r.status==='승인'?'reserved':'pending';if((state.externalReservations||[]).some(x=>x.roomId===roomId&&ds>=x.start&&ds<x.end))return 'reserved';return 'available';}
+function rangeCalendarHtml(roomId){v28RangeRoom=roomId;const base=new Date(calDate.getFullYear(),calDate.getMonth(),1);const y=base.getFullYear(),m=base.getMonth();const first=new Date(y,m,1),last=new Date(y,m+1,0);let h=`<div class="v28-range-head"><button type="button" class="secondary" onclick="moveRangeMonth(-1,'${roomId}')">이전</button><b>${y}년 ${m+1}월</b><button type="button" class="secondary" onclick="moveRangeMonth(1,'${roomId}')">다음</button></div><div class="v28-range-legend"><span>예약 가능</span><span>예약 완료</span><span>승인 대기</span><span>운영 중지</span></div><div class="v28-range-grid">${['일','월','화','수','목','금','토'].map(x=>`<b>${x}</b>`).join('')}`;for(let i=0;i<first.getDay();i++)h+='<i></i>';for(let d=1;d<=last.getDate();d++){const ds=fmtLocalDate(new Date(y,m,d));const st=roomDayStatus(roomId,ds);const selected=(v28RangeStart&&ds>=v28RangeStart&&(!v28RangeEnd||ds<v28RangeEnd))?' selected':'';h+=`<button type="button" class="v28-day ${st}${selected}" onclick="selectRangeDate('${roomId}','${ds}')" ${st==='reserved'||st==='block'?'disabled':''}><strong>${d}</strong><small>${st==='available'?'가능':st==='pending'?'대기':st==='block'?'중지':'완료'}</small></button>`;}return h+'</div>'; }
+function moveRangeMonth(n,roomId){calDate.setMonth(calDate.getMonth()+n);const el=document.getElementById('v28RangeCalendar');if(el)el.innerHTML=rangeCalendarHtml(roomId);}
+function selectRangeDate(roomId,ds){const form=document.querySelector('#reserveForm form');if(!form)return;if(!v28RangeStart||v28RangeEnd||ds<v28RangeStart){v28RangeStart=ds;v28RangeEnd='';form.checkin.value=ds;form.checkout.value='';}else{const end=dateAdd(ds,1);if(!isRoomAvailable(roomId,v28RangeStart,end)){toast('선택 기간에 예약 불가능한 날짜가 포함되어 있습니다.');v28RangeStart=ds;v28RangeEnd='';form.checkin.value=ds;form.checkout.value='';}else{v28RangeEnd=end;form.checkout.value=end;}}document.getElementById('v28RangeCalendar').innerHTML=rangeCalendarHtml(roomId);updateEstimate(form);}
+window.requestCustomerPasswordReset=requestCustomerPasswordReset;window.changeTemporaryPassword=changeTemporaryPassword;window.selectRangeDate=selectRangeDate;window.moveRangeMonth=moveRangeMonth;window.resendKakao=resendKakao;window.diagnoseKakao=diagnoseKakao;
 attachGlobalHandlers();
 expirePendingReservations();
 notifyCheckoutOverdue();

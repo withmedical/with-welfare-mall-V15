@@ -1,7 +1,7 @@
 {
   "name": "WITH Welfare Mall",
   "short_name": "WITH 복지몰",
-  "description": "사계펜션 예약 및 임직원 복지몰",
+  "description": "스페이스 농농 예약 및 임직원 복지몰",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
