@@ -1,4 +1,4 @@
-const CACHE_NAME="with-welfare-v28-0-6-production";
+const CACHE_NAME="with-welfare-v28-0-7-production";
 const ASSETS=["/","/index.html","/app.js?v=28_0_6_production","/style.css?v=28_0_6","/manifest.webmanifest?v=28_0_6","/icon-192.png","/icon-512.png"];
 self.addEventListener("install",event=>{self.skipWaiting();event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(ASSETS)).catch(()=>{}));});
 self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
