@@ -397,3 +397,8 @@ button{min-height:42px}
 .v28-day{min-height:58px;padding:6px;border-radius:10px;background:#e9f7ef;color:#14532d;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}.v28-day small{font-size:10px}.v28-day.pending{background:#fff0b8;color:#7a4d00}.v28-day.reserved{background:#ffd7d7;color:#8a1c1c}.v28-day.block{background:#d9dde5;color:#475467}.v28-day.selected{outline:3px solid #2357d9;outline-offset:1px}.v28-day:disabled{opacity:.8;cursor:not-allowed}
 .password-change-panel{max-width:560px;margin:40px auto}
 @media(max-width:760px){.v28-range-title{align-items:flex-start;flex-direction:column}.v28-range-grid{gap:3px}.v28-day{min-height:50px;padding:3px}.v28-range-box{padding:10px}}
+
+/* V28.0.5 숙소 차량 이용 */
+.vehicle-use-box{border:1px solid #d9e2ec;border-radius:12px;padding:14px;background:#f8fafc}
+.vehicle-use-result{margin-top:8px;font-weight:700;line-height:1.5}
+.vehicle-use-result.full{color:#147d3f}.vehicle-use-result.partial{color:#9a6700}.vehicle-use-result.none,.vehicle-use-result.invalid{color:#b42318}
