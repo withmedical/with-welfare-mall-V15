@@ -414,3 +414,11 @@ button{min-height:42px}
 .v28-calendar-selection-summary span{display:inline-flex;gap:6px;align-items:center}
 .v28-calendar-selection-summary b{color:#2357d9}
 @media(max-width:760px){.v28-calendar-selection-summary{display:grid;gap:7px}.v28-day.range-checkin small,.v28-day.range-checkout small{font-size:9px;padding:2px 4px}}
+
+/* V28.0.9 관리자 팝업·메모 */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.48);display:flex;align-items:center;justify-content:center;padding:18px;z-index:9999}
+.modal-card{width:min(520px,100%);max-height:85vh;overflow:auto;background:#fff;border-radius:16px;padding:22px;box-shadow:0 24px 70px rgba(15,23,42,.25)}
+.modal-card h3{margin:0 0 12px}.modal-content{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;line-height:1.65}
+.reject-reasons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.reject-reasons label{display:flex;align-items:center;gap:7px;padding:9px 10px;border:1px solid #dbe3ec;border-radius:9px;font-weight:700}.reject-reasons input{width:auto}
+.memo-more{margin-top:7px;padding:3px 0!important;background:transparent!important;color:#2563eb!important;border:0!important;box-shadow:none!important;font-size:12px;text-decoration:none}.memo-more:hover{text-decoration:underline}
+@media(max-width:560px){.reject-reasons{grid-template-columns:1fr}}
