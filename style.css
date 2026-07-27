@@ -402,3 +402,4 @@ button{min-height:42px}
 .vehicle-use-box{border:1px solid #d9e2ec;border-radius:12px;padding:14px;background:#f8fafc}
 .vehicle-use-result{margin-top:8px;font-weight:700;line-height:1.5}
 .vehicle-use-result.full{color:#147d3f}.vehicle-use-result.partial{color:#9a6700}.vehicle-use-result.none,.vehicle-use-result.invalid{color:#b42318}
+.version-link{border:0;background:transparent;color:inherit;font-size:11px;line-height:1.35;cursor:pointer;padding:4px}.version-link:hover{text-decoration:underline}
