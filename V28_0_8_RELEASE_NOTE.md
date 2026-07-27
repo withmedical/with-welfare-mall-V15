@@ -1,4 +1,4 @@
-# WITH Welfare Mall V28.0.8 Production
+# WITH Welfare Mall V28.0.8.1 Production
 Release: 2026-07-27
 
 ## 핵심 변경사항
