@@ -7,6 +7,23 @@ function cfg(env) {
   if (!url || !key) throw new Error('SUPABASE_SERVICE_ROLE_KEY 또는 SUPABASE_SECRET_KEY가 필요합니다.');
   return { url, key };
 }
+function fileExtension(name) {
+  const match = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : '';
+}
+function allowedFile(file) {
+  const type = String(file?.type || '').toLowerCase();
+  const ext = fileExtension(file?.name);
+  return type === 'application/pdf' || type === 'application/x-pdf' || type.startsWith('image/') || ext === 'pdf' || ['jpg','jpeg','png','gif','webp','bmp','heic','heif'].includes(ext);
+}
+function normalizedType(file) {
+  const type = String(file?.type || '').toLowerCase();
+  const ext = fileExtension(file?.name);
+  if (type === 'application/pdf' || type === 'application/x-pdf' || ext === 'pdf') return 'application/pdf';
+  if (type.startsWith('image/')) return type;
+  const map = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', heic:'image/heic', heif:'image/heif' };
+  return map[ext] || type || 'application/octet-stream';
+}
 function safeName(name) {
   return String(name || 'file').normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-120);
 }
@@ -21,16 +38,16 @@ export async function onRequest(context) {
       const applicationId = String(form.get('applicationId') || 'unknown');
       if (!(file instanceof File)) return json({ ok: false, error: '첨부파일이 없습니다.' }, 400);
       if (file.size > 5 * 1024 * 1024) return json({ ok: false, error: '파일은 5MB 이하만 가능합니다.' }, 400);
-      if (!(file.type.startsWith('image/') || file.type === 'application/pdf')) return json({ ok: false, error: '이미지 또는 PDF만 가능합니다.' }, 400);
+      if (!allowedFile(file)) return json({ ok: false, error: '이미지 또는 PDF만 가능합니다.' }, 400);
       const path = `${applicationId}/${crypto.randomUUID()}_${safeName(file.name)}`;
       const res = await fetch(`${url}/storage/v1/object/benefit-evidence/${encodeURIComponent(path).replace(/%2F/g, '/')}`, {
         method: 'POST',
-        headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': file.type || 'application/octet-stream', 'x-upsert': 'false' },
+        headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': normalizedType(file), 'x-upsert': 'false' },
         body: file.stream()
       });
       const text = await res.text();
       if (!res.ok) throw new Error(text || `파일 업로드 실패 ${res.status}`);
-      return json({ ok: true, file: { path, name: file.name, type: file.type, size: file.size, url: `/api/benefit-files?path=${encodeURIComponent(path)}` } });
+      return json({ ok: true, file: { path, name: file.name, type: normalizedType(file), size: file.size, url: `/api/benefit-files?path=${encodeURIComponent(path)}` } });
     }
     if (request.method === 'GET') {
       const path = reqUrl.searchParams.get('path');

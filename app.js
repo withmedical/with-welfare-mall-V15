@@ -1,4 +1,4 @@
-const APP_VERSION="V28.0.9.2 Production";
+const APP_VERSION="V28.0.9.3 Production";
 const RELEASE_DATE="2026-07-27";
 const RELEASE_SUMMARY="V28.0.9.1 관리자 예약표 계좌정보 제거 보완";
 window.onerror=function(msg,src,line,col,err){console.error('APP ERROR',msg,err);};
@@ -297,6 +297,7 @@ function migrate(){
   if(!(state.auditLogs||[]).some(x=>x.version==="V28.0.8")){state.auditLogs.unshift({id:uid(),actor:"SYSTEM",action:"시스템 업데이트",detail:"V28.0.8 | 숙소 결제 분기·숙박 이용 신청서·카카오 알림 개선",version:"V28.0.8",createdAt:new Date().toLocaleString()});changed=true;}
   if(!(state.auditLogs||[]).some(x=>x.version==="V28.0.8.1")){state.auditLogs.unshift({id:uid(),actor:"SYSTEM",action:"시스템 업데이트",detail:"V28.0.8.1 | 예약 날짜·입금안내·반려사유·숙박신청서 목록 보완",version:"V28.0.8.1",createdAt:new Date().toLocaleString()});changed=true;}
   if(!(state.auditLogs||[]).some(x=>x.version==="V28.0.9.2")){state.auditLogs.unshift({id:uid(),actor:"SYSTEM",action:"시스템 업데이트",detail:"V28.0.9.2 | 입금안내 금액 변수 호환명 추가",version:"V28.0.9.2",createdAt:new Date().toLocaleString()});changed=true;}
+  if(!(state.auditLogs||[]).some(x=>x.version==="V28.0.9.3")){state.auditLogs.unshift({id:uid(),actor:"SYSTEM",action:"시스템 업데이트",detail:"V28.0.9.3 | PC PDF 첨부 MIME/확장자 호환 개선",version:"V28.0.9.3",createdAt:new Date().toLocaleString()});changed=true;}
   if(!(state.auditLogs||[]).some(x=>x.version==="V28.0.8.2")){state.auditLogs.unshift({id:uid(),actor:"SYSTEM",action:"시스템 업데이트",detail:"V28.0.8.2 | 달력 체크인·체크아웃 선택 표시 개선",version:"V28.0.8.2",createdAt:new Date().toLocaleString()});changed=true;}
   if(!(state.auditLogs||[]).some(x=>x.version==="V28.0.9")){state.auditLogs.unshift({id:uid(),actor:"SYSTEM",action:"시스템 업데이트",detail:"V28.0.9 | 카카오 변수·예약 메모·반려사유·선택삭제 보안 개선",version:"V28.0.9",createdAt:new Date().toLocaleString()});changed=true;}
   if(changed) save();
@@ -479,13 +480,30 @@ async function migrateOperationalDataIfNeeded(legacy){
     if(!current.length&&oldRows.length){for(const row of oldRows){try{await createServerRecord(key,row);}catch(err){console.warn("이전 데이터 이동 실패",key,row?.id,err);}}}
   }
 }
+function benefitFileExtension(name){
+  const match=String(name||"").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match?match[1]:"";
+}
+function isAllowedBenefitFile(file){
+  const type=String(file?.type||"").toLowerCase();
+  const ext=benefitFileExtension(file?.name);
+  return type==="application/pdf" || type==="application/x-pdf" || type.startsWith("image/") || ext==="pdf" || ["jpg","jpeg","png","gif","webp","bmp","heic","heif"].includes(ext);
+}
+function normalizedBenefitFileType(file){
+  const type=String(file?.type||"").toLowerCase();
+  const ext=benefitFileExtension(file?.name);
+  if(type==="application/pdf" || type==="application/x-pdf" || ext==="pdf") return "application/pdf";
+  if(type.startsWith("image/")) return type;
+  const map={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp",bmp:"image/bmp",heic:"image/heic",heif:"image/heif"};
+  return map[ext]||type||"application/octet-stream";
+}
 async function uploadBenefitFiles(applicationId,files){
   const arr=Array.from(files||[]);if(arr.length>5)throw new Error("증빙자료는 최대 5장까지 첨부 가능합니다.");
   const uploaded=[];
   for(let i=0;i<arr.length;i++){
     const file=arr[i];
     if(file.size>5*1024*1024)throw new Error("첨부파일은 개별 5MB 이하만 가능합니다.");
-    if(!(file.type.startsWith("image/")||file.type==="application/pdf"))throw new Error("PDF 또는 이미지 파일만 첨부 가능합니다.");
+    if(!isAllowedBenefitFile(file))throw new Error("PDF 또는 이미지 파일만 첨부 가능합니다.");
     setOperationBusy(true,`증빙자료 업로드 중 (${i+1}/${arr.length})`);
     const fd=new FormData();fd.append("applicationId",applicationId);fd.append("file",file);
     const res=await fetch("/api/benefit-files",{method:"POST",body:fd});const data=await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
@@ -1463,13 +1481,13 @@ function readBenefitFiles(files, done){
   if(arr.length>5) return toast("증빙자료는 최대 5장까지 첨부 가능합니다.");
   for(const file of arr){
     if(file.size>5*1024*1024) return toast("첨부파일은 개별 5MB 이하만 가능합니다.");
-    if(!(file.type.startsWith("image/") || file.type==="application/pdf")) return toast("PDF 또는 이미지 파일만 첨부 가능합니다.");
+    if(!isAllowedBenefitFile(file)) return toast("PDF 또는 이미지 파일만 첨부 가능합니다.");
   }
   if(!arr.length) return done([]);
   const out=[]; let left=arr.length;
   arr.forEach(file=>{
     const reader=new FileReader();
-    reader.onload=()=>{out.push({id:uid(),name:file.name,type:file.type,size:file.size,data:reader.result}); if(--left===0) done(out);};
+    reader.onload=()=>{out.push({id:uid(),name:file.name,type:normalizedBenefitFileType(file),size:file.size,data:reader.result}); if(--left===0) done(out);};
     reader.onerror=()=>toast("첨부파일을 읽는 중 오류가 발생했습니다.");
     reader.readAsDataURL(file);
   });
@@ -1699,7 +1717,7 @@ function kakaoReadyPanel(){
  <details class="wide" style="margin-top:8px" open><summary><b>카카오 템플릿 관리</b></summary><div style="display:flex;justify-content:flex-end;margin:12px 0"><button type="button" onclick="addKakaoTemplate()">+ 템플릿 추가</button></div><div class="table-scroll"><table class="table"><thead><tr><th>템플릿 이름</th><th>이벤트 키</th><th>Template ID</th><th>담당자</th><th>상태</th><th>관리</th></tr></thead><tbody>${kakaoTemplateRows()}</tbody></table></div></details></form>
  <div class="grid3" style="margin-top:14px"><div class="kpi-card"><small>발송 성공</small><strong>${ok}</strong></div><div class="kpi-card"><small>발송 실패</small><strong>${fail}</strong></div><div class="kpi-card"><small>상태</small><strong>${n.kakaoEnabled?'활성':'비활성'}</strong></div></div></div>`;
 }
-function notificationAdminGroup(){const logs=state.kakaoLogs||[];return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 설정</h3><span class="muted">V28.0.9.2 Production</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>발송 로그</h3><span class="muted">성공·실패·재발송</span></div>${logs.length?`<div class="actions" style="margin-bottom:12px"><button class="secondary" onclick="toggleAllKakaoLogChecks(this)">전체 선택</button><button class="danger" onclick="deleteSelectedKakaoLogs()">선택삭제</button><button class="danger" onclick="clearKakaoLogs()">전체삭제</button></div><div class="table-scroll"><table class="table"><thead><tr><th><input type="checkbox" id="kakaoLogAll" onchange="setAllKakaoLogChecks(this.checked)" aria-label="전체 선택"></th><th>발송일시</th><th>업무 구분</th><th>처리 단계</th><th>템플릿</th><th>수신자</th><th>전화번호</th><th>성공·실패</th><th>관리</th></tr></thead><tbody>${logs.map(x=>`<tr><td><input type="checkbox" class="kakao-log-check" value="${kakaoHtml(x.id)}" aria-label="로그 선택"></td><td>${kakaoHtml(x.createdAt||'')}</td><td>${kakaoHtml(x.kind||'')}</td><td>${kakaoHtml(x.stage||'')}</td><td>${kakaoHtml((state.notificationSettings.customTemplateNames||{})[x.key]||KAKAO_TEMPLATE_NAMES[x.key]||x.key||'')}</td><td>${kakaoHtml(x.recipientName||'')}</td><td>${kakaoHtml(x.to||'')}</td><td>${kakaoHtml(x.status||'')}<br><span class="muted">${kakaoHtml(x.error||'')}</span></td><td><button class="secondary" onclick="resendKakao('${kakaoHtml(x.id)}')">재발송</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="panel empty">발송 로그가 없습니다.</div>`}</div></div>`;}
+function notificationAdminGroup(){const logs=state.kakaoLogs||[];return `<div class="group-box"><div class="group-section"><div class="subtle-title"><h3>카카오 알림 설정</h3><span class="muted">V28.0.9.3 Production</span></div>${kakaoReadyPanel()}</div><div class="group-section"><div class="subtle-title"><h3>발송 로그</h3><span class="muted">성공·실패·재발송</span></div>${logs.length?`<div class="actions" style="margin-bottom:12px"><button class="secondary" onclick="toggleAllKakaoLogChecks(this)">전체 선택</button><button class="danger" onclick="deleteSelectedKakaoLogs()">선택삭제</button><button class="danger" onclick="clearKakaoLogs()">전체삭제</button></div><div class="table-scroll"><table class="table"><thead><tr><th><input type="checkbox" id="kakaoLogAll" onchange="setAllKakaoLogChecks(this.checked)" aria-label="전체 선택"></th><th>발송일시</th><th>업무 구분</th><th>처리 단계</th><th>템플릿</th><th>수신자</th><th>전화번호</th><th>성공·실패</th><th>관리</th></tr></thead><tbody>${logs.map(x=>`<tr><td><input type="checkbox" class="kakao-log-check" value="${kakaoHtml(x.id)}" aria-label="로그 선택"></td><td>${kakaoHtml(x.createdAt||'')}</td><td>${kakaoHtml(x.kind||'')}</td><td>${kakaoHtml(x.stage||'')}</td><td>${kakaoHtml((state.notificationSettings.customTemplateNames||{})[x.key]||KAKAO_TEMPLATE_NAMES[x.key]||x.key||'')}</td><td>${kakaoHtml(x.recipientName||'')}</td><td>${kakaoHtml(x.to||'')}</td><td>${kakaoHtml(x.status||'')}<br><span class="muted">${kakaoHtml(x.error||'')}</span></td><td><button class="secondary" onclick="resendKakao('${kakaoHtml(x.id)}')">재발송</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="panel empty">발송 로그가 없습니다.</div>`}</div></div>`;}
 function setAllKakaoLogChecks(checked){document.querySelectorAll('.kakao-log-check').forEach(el=>el.checked=checked);const all=document.getElementById('kakaoLogAll');if(all)all.checked=checked;}
 function toggleAllKakaoLogChecks(btn){const checks=[...document.querySelectorAll('.kakao-log-check')];const shouldCheck=checks.some(x=>!x.checked);setAllKakaoLogChecks(shouldCheck);if(btn)btn.textContent=shouldCheck?'전체 해제':'전체 선택';}
 function selectedKakaoLogIds(){return [...document.querySelectorAll('.kakao-log-check:checked')].map(x=>x.value);}
